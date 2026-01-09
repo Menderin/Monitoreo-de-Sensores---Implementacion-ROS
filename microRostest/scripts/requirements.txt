@@ -1,0 +1,12 @@
+# Dependencias Python para scripts de micro-ROS + ESP32
+# Instalar con: pip install -r requirements.txt
+
+# ROS 2 Python dependencies
+pyyaml>=6.0
+
+# Numerical computing (si se necesita para procesamiento de datos)
+numpy>=1.24.0
+
+# Nota: rclpy y std_msgs se instalan con ROS 2, no con pip
+# Instalar ROS 2 packages con:
+# sudo apt install python3-rclpy python3-std-msgs

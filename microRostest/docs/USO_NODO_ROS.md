@@ -15,13 +15,23 @@ Tu archivo [sensor_temp.c](main/sensor_temp.c) ahora es un **nodo ROS completo**
 
 ### 📟 Terminal 1: Compilar y flashear ESP32
 
+**Opción A: Script unificado (recomendado)**
 ```bash
-cd /home/lab-ros/Documentos/Github/microRostest
-./build_and_flash.sh
+cd ~/Documentos/Github/sensores/microRostest/scripts
+./microros.sh all          # Build + Flash + Monitor automático
 ```
 
-O manualmente:
+**Opción B: Paso a paso**
 ```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+./microros.sh build        # Compilar
+./microros.sh flash        # Flashear
+./microros.sh monitor      # Ver logs
+```
+
+**Opción C: Comandos manuales**
+```bash
+cd ~/Documentos/Github/sensores/microRostest
 source /home/lab-ros/esp/v5.5.2/esp-idf/export.sh
 idf.py build flash monitor
 ```
@@ -40,8 +50,16 @@ idf.py build flash monitor
 
 ### 🌉 Terminal 2: Iniciar micro-ROS Agent (Puente PC ↔ ESP32)
 
+**Opción A: Script unificado (recomendado)**
+```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+./microros.sh agent-serial
+```
+
+**Opción B: Comando manual**
 ```bash
 source /opt/ros/jazzy/setup.bash
+source ~/microros_ws/install/setup.bash
 ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 115200
 ```
 
@@ -59,13 +77,31 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 115200
 
 ### 📊 Terminal 3: Ver datos en ROS 2 (PC)
 
+**Opción A: Script unificado (recomendado)**
+```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+
+# Ver todos los tópicos
+./microros.sh topics
+
+# Escuchar temperatura en tiempo real
+./microros.sh listen
+
+# Ver info del nodo
+./microros.sh node-info
+
+# Ver frecuencia de publicación
+./microros.sh hz
+```
+
+**Opción B: Comandos ROS manuales**
 ```bash
 # Configurar ROS
 source /opt/ros/jazzy/setup.bash
 
 # Ver todos los nodos
 ros2 node list
-# Salida: /esp32_temp_sensor
+# Salida: /micro_ros_esp32_node
 
 # Ver todos los tópicos
 ros2 topic list
@@ -109,43 +145,34 @@ ros2 run rqt_plot rqt_plot
 ros2 run rqt_graph rqt_graph
 ```
 
-### Opción 3: Crear nodo suscriptor personalizado
+### Opción 3: Nodo Python con estadísticas (incluido en el proyecto)
 
-```python
-# temp_subscriber.py
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Float32
-
-class TempSubscriber(Node):
-    def __init__(self):
-        super().__init__('temp_subscriber')
-        self.subscription = self.create_subscription(
-            Float32,
-            'temperatura',
-            self.listener_callback,
-            10)
-        
-    def listener_callback(self, msg):
-        temp_c = msg.data
-        temp_f = (temp_c * 9/5) + 32
-        self.get_logger().info(f'🌡️ {temp_c:.2f}°C = {temp_f:.2f}°F')
-
-def main():
-    rclpy.init()
-    subscriber = TempSubscriber()
-    rclpy.spin(subscriber)
-    subscriber.destroy_node()
-    rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
-```
-
-Ejecutar:
+**Primera vez - Instalar dependencias:**
 ```bash
-python3 temp_subscriber.py
+cd ~/Documentos/Github/sensores/microRostest/scripts
+pip install -r requirements.txt
+# O: sudo apt install python3-yaml python3-numpy
 ```
+
+**Ejecutar:**
+```bash
+python3 pc_temperature_subscriber.py
+```
+
+**Salida:**
+```
+🌡️ [15:30:45] Temp: 25.12°C (77.22°F) | Estado: Normal | #Lectura: 1
+🌡️ [15:30:47] Temp: 25.18°C (77.32°F) | Estado: Normal | #Lectura: 2
+📊 Estadísticas (últimas 10 lecturas): Promedio=25.15°C | Min=25.06°C | Max=25.23°C
+```
+
+**Características:**
+- ✅ Conversión automática °C → °F
+- ✅ Estadísticas en tiempo real (min/max/promedio)
+- ✅ Alertas de temperatura (🔥 alta >30°C, ❄️ baja <15°C)
+- ✅ Timestamps y contador de lecturas
+
+**Para crear tu propio nodo:** Ver código en [scripts/pc_temperature_subscriber.py](../scripts/pc_temperature_subscriber.py)
 
 ---
 
@@ -233,15 +260,51 @@ Línea ~101:
 - Intentar otro GPIO (cambiar `ONE_WIRE_GPIO` en código)
 
 **No se conecta al Agent:**
-- Verificar que el Agent está corriendo
-- Verificar puerto serial correcto (`/dev/ttyUSB0`, `/dev/ttyUSB1`, etc.)
-- Dar permisos: `sudo chmod 666 /dev/ttyUSB0`
-- Reiniciar ESP32 (botón RESET)
+- Verificar que el Agent está corriendo: `./microros.sh agent-serial`
+- Verificar puerto serial: `./microros.sh ports`
+- Configurar permisos: `./microros.sh fix-permissions`
+- Test conexión serial: `./microros.sh test-serial`
+- Reiniciar ESP32 (botón RESET físico)
 
 **No aparecen tópicos en ROS:**
 - Verificar `ROS_DOMAIN_ID` (debe ser igual en ESP32 y PC)
 - Verificar firewall
 - Reiniciar Agent
+
+---
+
+## 🛠️ Comandos Útiles del Script
+
+```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+
+# Ver menú interactivo completo (19 opciones)
+./microros.sh
+
+# ESP32
+./microros.sh build              # Compilar proyecto
+./microros.sh flash              # Flashear ESP32
+./microros.sh monitor            # Monitor serial
+./microros.sh all                # Build + Flash + Monitor
+./microros.sh clean              # Limpiar proyecto
+./microros.sh menuconfig         # Configuración ESP-IDF
+
+# Agent
+./microros.sh agent-serial       # Iniciar Agent por serial
+./microros.sh agent-udp          # Iniciar Agent por UDP
+
+# ROS 2
+./microros.sh topics             # Listar tópicos
+./microros.sh listen             # Escuchar /temperatura
+./microros.sh node-info          # Info del nodo
+./microros.sh hz                 # Frecuencia de publicación
+
+# Diagnóstico
+./microros.sh ports              # Ver puertos USB
+./microros.sh test-serial        # Test conexión serial
+./microros.sh sysinfo            # Info del sistema
+./microros.sh check-deps         # Verificar dependencias
+```
 
 ---
 
@@ -280,12 +343,17 @@ Tu ESP32 ahora es un nodo ROS estándar, puede integrarse con cualquier sistema 
 
 ## 📚 Recursos
 
-- **Este proyecto**: Ver [README.md](README.md)
+- **Documentación del proyecto**: 
+  - [README.md](../README.md) - Documentación completa
+  - [INICIO_RAPIDO.md](INICIO_RAPIDO.md) - Guía rápida de inicio
+  - [scripts/README.md](../scripts/README.md) - Documentación de scripts
 - **Scripts útiles**: 
-  - [build_and_flash.sh](build_and_flash.sh) - Compilar/flashear
-  - [microros_helper.sh](microros_helper.sh) - Menú interactivo
-- **micro-ROS docs**: https://micro.ros.org/
-- **ROS 2 docs**: https://docs.ros.org/en/jazzy/
+  - [microros.sh](../scripts/microros.sh) - Script unificado TODO-EN-UNO
+  - [pc_temperature_subscriber.py](../scripts/pc_temperature_subscriber.py) - Nodo Python ejemplo
+- **Documentación externa**:
+  - [micro-ROS docs](https://micro.ros.org/) - Documentación oficial micro-ROS
+  - [ROS 2 Jazzy docs](https://docs.ros.org/en/jazzy/) - Documentación ROS 2
+  - [ESP-IDF docs](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/) - Documentación ESP-IDF
 
 ---
 

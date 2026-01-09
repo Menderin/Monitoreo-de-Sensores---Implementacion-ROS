@@ -16,6 +16,10 @@
 #include <std_msgs/msg/float32.h>
 #include <rmw_microros/rmw_microros.h>
 
+#include "esp32_serial_transport.h"
+
+#include <driver/uart.h>
+
 // Configuración
 #define ONE_WIRE_GPIO 4
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ESP_LOGE(TAG, "Failed status on line %d: %d. Aborting.",__LINE__,(int)temp_rc); vTaskDelete(NULL);}}
@@ -33,6 +37,8 @@ ds18b20_device_handle_t ds18b20s = NULL;
 
 static const char *TAG = "MICRO_ROS_TEMP";
 
+static size_t microros_uart_port = UART_NUM_0;
+
 // Callback del timer - Se ejecuta periódicamente para publicar la temperatura
 void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 {
@@ -47,7 +53,6 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
             // Publicar temperatura en el tópico ROS
             temp_msg.data = temperature;
             RCSOFTCHECK(rcl_publish(&temperature_publisher, &temp_msg, NULL));
-            ESP_LOGI(TAG, "📡 Publicado en ROS: %.2f °C", temperature);
         } else {
             ESP_LOGW(TAG, "⚠️ Error leyendo sensor");
         }
@@ -58,6 +63,21 @@ void timer_callback(rcl_timer_t * timer, int64_t last_call_time)
 void micro_ros_task(void * arg)
 {
     allocator = rcl_get_default_allocator();
+
+#if defined(RMW_UXRCE_TRANSPORT_CUSTOM)
+    // IMPORTANT: configure transport BEFORE any ping/init.
+    rmw_uros_set_custom_transport(
+        true,
+        (void *)&microros_uart_port,
+        esp32_serial_open,
+        esp32_serial_close,
+        esp32_serial_write,
+        esp32_serial_read
+    );
+#else
+    ESP_LOGE(TAG, "micro-ROS transport is not set to custom. Update micro_ros_espidf_component/colcon.meta (-DRMW_UXRCE_TRANSPORT=custom) and rebuild.");
+    vTaskDelete(NULL);
+#endif
 
     // Esperar conexión con el micro-ROS Agent (ejecutándose en el PC)
     ESP_LOGI(TAG, "🔍 Esperando conexión con micro-ROS Agent en PC...");
