@@ -1,20 +1,24 @@
-# 🌡️ Sensor de Temperatura DS18B20 con micro-ROS
+# 🌡️🧪 Sensor CWT-BL (pH + Temperatura) con micro-ROS
 
-Sistema completo de monitoreo de temperatura usando ESP32 + DS18B20 que publica datos en ROS 2 mediante comunicación serial (UART).
+Sistema completo de monitoreo ambiental usando ESP32 + sensor CWT-BL que publica datos de pH y temperatura en ROS 2 mediante comunicación serial (UART).
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-5.5.2-green)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-Serial-orange)](https://micro.ros.org/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)](https://www.mongodb.com/cloud/atlas)
 
 ## 🎯 Descripción
 
-Integración de sensor DS18B20 con ESP32 usando **micro-ROS** para publicar lecturas de temperatura al ecosistema ROS 2.
+Integración del sensor dual CWT-BL (pH y temperatura) con ESP32 usando **micro-ROS** para publicar lecturas al ecosistema ROS 2 y almacenarlas en **MongoDB Atlas**.
 
 **Características principales:**
-- 🌡️ Lectura de temperatura del sensor DS18B20 (protocolo OneWire)
+- 🌡️ Lectura de temperatura del sensor CWT-BL (-20°C a 80°C, analógico)
+- 🧪 Lectura de pH del sensor CWT-BL (0-14 pH, analógico)
 - 📡 Comunicación serial UART (115200 baudios) entre ESP32 y PC
-- 🤖 Nodo micro-ROS que publica en `/temperatura` (std_msgs/Float32)
-- ⚡ Publicación cada 2 segundos (0.5 Hz)
+- 🤖 Nodo micro-ROS que publica en `/temperatura` y `/ph` (std_msgs/Float32)
+- ⚡ Publicación cada 4 segundos (0.25 Hz)
+- 🗄️ Almacenamiento automático en MongoDB Atlas
+- 💾 Respaldo local en archivos JSON
 - 🔧 Scripts de automatización incluidos
 
 ---
@@ -25,6 +29,7 @@ Integración de sensor DS18B20 con ESP32 usando **micro-ROS** para publicar lect
 - [Software Necesario](#-software-necesario)
 - [Guía de Inicio Rápido](#-guía-de-inicio-rápido)
 - [Arquitectura del Sistema](#-arquitectura-del-sistema)
+- [Configuración MongoDB Atlas](#-configuración-mongodb-atlas)
 - [Instalación Detallada](#-instalación-detallada)
 - [Uso del Sistema](#-uso-del-sistema)
 - [Estructura del Proyecto](#-estructura-del-proyecto)
@@ -37,24 +42,25 @@ Integración de sensor DS18B20 con ESP32 usando **micro-ROS** para publicar lect
 ## 🔌 Hardware Requerido
 
 ### Componentes
-- **ESP32** (cualquier modelo con UART)
-- **Sensor DS18B20** (temperatura digital OneWire)
-- **Resistencia pull-up** de 4.7kΩ
+- **ESP32** (cualquier modelo con ADC y UART)
+- **Sensor CWT-BL** (pH + temperatura dual, analógico)
 - **Cable USB** para conexión ESP32-PC
+- **Fuente 5V** para el sensor CWT-BL
 
 ### Diagrama de Conexiones
 ```
-DS18B20          ESP32
-━━━━━━━━         ━━━━━━
- VCC    ────────► 3.3V
- GND    ────────► GND
- DATA   ────────► GPIO 4
-         ↑
-         │
-      [4.7kΩ]
-         │
-         └──────► 3.3V
+Sensor CWT-BL              ESP32
+━━━━━━━━━━━━━         ━━━━━━
+ VCC (5V)     ────────► 5V
+ GND          ────────► GND
+ Temp Out     ────────► GPIO39 (ADC1_CH3)
+ pH Out       ────────► GPIO36 (ADC1_CH0)
+              
+              USB Cable
+              ┌───────► PC (Ubuntu)
 ```
+
+**Nota importante:** El sensor CWT-BL requiere 5V, pero las salidas analógicas son compatibles con 3.3V del ESP32 (mediante divisor de tensión interno).
 
 ---
 

@@ -36,22 +36,25 @@ Repositorio de proyectos de **sensores IoT integrados con ROS 2** mediante **mic
 
 ## 📦 Proyectos
 
-### 🌡️ [microRostest](./microRostest/) - Sensor de Temperatura DS18B20
+### 🌡️🧪 [microRostest](./microRostest/) - Sensor CWT-BL (pH + Temperatura)
 
-Sistema completo de monitoreo de temperatura con sensor DS18B20 y ESP32.
+Sistema completo de monitoreo ambiental con sensor CWT-BL dual (pH y temperatura) y ESP32.
 
 **Stack tecnológico:**
 - ESP32 + ESP-IDF 5.5.2
-- Sensor DS18B20 (OneWire)
+- Sensor CWT-BL (pH + Temperatura analógico)
 - micro-ROS (Serial transport)
 - ROS 2 Jazzy
+- MongoDB Atlas (almacenamiento en nube)
 
 **Características:**
-- ✅ Lectura digital de temperatura (-55°C a +125°C)
-- ✅ Publicación en topic `/temperatura` (std_msgs/Float32)
-- ✅ Frecuencia: 0.5 Hz (cada 2 segundos)
+- ✅ Lectura dual: pH (0-14) y Temperatura (-20°C a 80°C)
+- ✅ Publicación en topics `/ph` y `/temperatura` (std_msgs/Float32)
+- ✅ Frecuencia: 0.25 Hz (cada 4 segundos)
+- ✅ Almacenamiento en MongoDB Atlas con Python
 - ✅ Script unificado `microros.sh` con 19 opciones
-- ✅ Subscribers Python con estadísticas y alertas
+- ✅ Subscribers Python con estadísticas en tiempo real
+- ✅ Respaldo local en archivos JSON
 
 **[Ver documentación completa →](./microRostest/README.md)**
 
@@ -135,29 +138,28 @@ data: 25.25
 | Componente | Modelo | Especificación | Precio aprox. |
 |------------|--------|----------------|---------------|
 | Microcontrolador | ESP32-DevKit | ESP32-D0WDQ6, Dual-Core @ 240MHz | $4-8 USD |
-| Sensor Temp. | DS18B20 | -55°C a +125°C, OneWire, ±0.5°C | $2-4 USD |
-| Resistencia | Pull-up | 4.7kΩ, 1/4W | < $0.10 USD |
+| Sensor Dual | CWT-BL | pH (0-14) + Temp (-20 a 80°C), Analógico | $15-25 USD |
 | Cable | USB-A a Micro-USB | Para programación y alimentación | $1-2 USD |
 
-**Costo total:** ~$7-15 USD
+**Costo total:** ~$20-35 USD
 
 ### Diagrama de conexiones
 
 ```
-┌─────────────────────────────────────────────┐
-│                  ESP32                      │
-│                                             │
-│  3.3V ●────┬────────────● VCC  DS18B20     │
-│            │            │                   │
-│            └──[4.7kΩ]──┤                   │
-│                         │                   │
-│  GPIO4 ●───────────────● DATA              │
-│                         │                   │
-│  GND ●─────────────────● GND               │
-│                                             │
-│  USB ◄────────► PC (Ubuntu)                │
-│       /dev/ttyUSB0                          │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                    ESP32                         │
+│                                                  │
+│  5V ●──────────────────● VCC  Sensor CWT-BL     │
+│                        │                         │
+│  GPIO39 (ADC) ●────────● Temp Out (0-3.3V)      │
+│                        │                         │
+│  GPIO36 (ADC) ●────────● pH Out (0-3.3V)        │
+│                        │                         │
+│  GND ●─────────────────● GND                     │
+│                                                  │
+│  USB ◄─────────► PC (Ubuntu + MongoDB Atlas)    │
+│        /dev/ttyUSB0                              │
+└──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -199,10 +201,13 @@ data: 25.25
 
 ### Performance
 
-- **Frecuencia de publicación:** 0.5 Hz (configurable)
-- **Precisión del sensor:** ±0.5°C
-- **Rango de temperatura:** -55°C a +125°C
-- **Consumo ESP32:** ~80mA @ 3.3V
+- **Frecuencia de publicación:** 0.25 Hz (cada 4s, configurable)
+- **Precisión temperatura:** Calibrable (fórmula ajustable)
+- **Rango temperatura:** -20°C a 80°C
+- **Precisión pH:** ±0.1 pH (con calibración)
+- **Rango pH:** 0 a 14
+- **Consumo ESP32:** ~80mA @ 5V
+- **Almacenamiento:** MongoDB Atlas (nube)
 
 ---
 
@@ -220,11 +225,14 @@ data: 25.25
 
 ## 📝 To-Do / Roadmap
 
-- [ ] Agregar sensor DHT22 (temperatura + humedad)
+- [x] Sensor CWT-BL (pH + temperatura)
+- [x] Integración con MongoDB Atlas
+- [x] Almacenamiento automático en nube
+- [ ] Dashboard web en tiempo real (Grafana)
+- [ ] Múltiples ESP32 con IDs únicos
+- [ ] Colección de dispositivos en MongoDB
 - [ ] Implementar transporte WiFi (UDP)
-- [ ] Dashboard web en tiempo real
-- [ ] Integración con InfluxDB + Grafana
-- [ ] Multi-sensor (varios sensores en un ESP32)
+- [ ] Alertas por valores fuera de rango
 - [ ] OTA updates para firmware
 
 ---

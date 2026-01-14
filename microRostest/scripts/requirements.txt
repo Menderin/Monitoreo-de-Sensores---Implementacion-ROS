@@ -10,3 +10,5 @@ numpy>=1.24.0
 # Nota: rclpy y std_msgs se instalan con ROS 2, no con pip
 # Instalar ROS 2 packages con:
 # sudo apt install python3-rclpy python3-std-msgs
+pymongo
+dotenv

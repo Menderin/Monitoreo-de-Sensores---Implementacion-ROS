@@ -38,13 +38,20 @@ W (13001) MICRO_ROS_TEMP: ⏳ Esperando agente... intento 1/10
 
 El Agent es el **puente de comunicación** entre ESP32 y ROS 2. **DEBE estar corriendo** para que el sistema funcione.
 
-**Opción A: Script simplificado (recomendado)**
+**Opción A: Menú interactivo (recomendado para principiantes)**
+```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+./microros.sh
+# Selecciona: Opción 8 - Iniciar Agent (Serial)
+```
+
+**Opción B: Comando directo**
 ```bash
 cd ~/Documentos/Github/sensores/microRostest/scripts
 ./microros.sh agent-serial
 ```
 
-**Opción B: Comando manual**
+**Opción C: Comando manual**
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/microros_ws/install/setup.bash
@@ -65,9 +72,16 @@ ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 -b 115200
 
 En una **nueva terminal**, verifica que el tópico está disponible:
 
+**Opción A: Comando directo**
 ```bash
 cd ~/Documentos/Github/sensores/microRostest/scripts
 ./microros.sh topics
+```
+
+**Opción B: Menú interactivo**
+```bash
+./microros.sh
+# Selecciona: Opción 10 - Listar tópicos
 ```
 
 **Debe incluir:**
@@ -81,12 +95,18 @@ cd ~/Documentos/Github/sensores/microRostest/scripts
 
 ### 📊 Paso 4: Ver Datos de Temperatura
 
-**Opción A: Comando rápido**
+**Opción A: Menú interactivo**
+```bash
+./microros.sh
+# Selecciona: Opción 11 - Escuchar /temperatura
+```
+
+**Opción B: Comando directo**
 ```bash
 ./microros.sh listen
 ```
 
-**Opción B: Nodo Python con estadísticas**
+**Opción C: Nodo Python con estadísticas**
 ```bash
 python3 pc_temperature_subscriber.py
 ```
@@ -152,15 +172,28 @@ ESP32 (micro-ROS) ←→ Agent (PC) ←→ ROS 2 (PC)
 
 ---
 
-## 🛠️ Comandos Útiles del Script
+## 🛠️ Formas de Usar el Script
+
+### Menú Interactivo (Recomendado)
+
+```bash
+cd ~/Documentos/Github/sensores/microRostest/scripts
+./microros.sh
+```
+
+Se mostrará un **menú con 19 opciones** organizadas en categorías:
+- 📟 **ESP32 Development** (7 opciones): Build, flash, monitor, etc.
+- 🌐 **micro-ROS Agent** (2 opciones): Iniciar Agent serial/UDP
+- 📊 **ROS 2 Monitor** (4 opciones): Ver tópicos, nodos, datos
+- ⚙️ **Installation** (3 opciones): Instalar Agent, dependencias, permisos
+- 🔍 **Diagnostics** (3 opciones): Verificar sistema, puertos, logs
+
+### Comandos Directos (Para usuarios avanzados)
 
 ```bash
 cd ~/Documentos/Github/sensores/microRostest/scripts
 
-# Ver menú interactivo completo
-./microros.sh
-
-# Comandos directos
+# Comandos directos sin menú
 ./microros.sh agent-serial    # ★ Iniciar Agent (el más importante)
 ./microros.sh monitor         # Ver logs del ESP32
 ./microros.sh topics          # Listar tópicos ROS 2
@@ -186,25 +219,12 @@ cd ~/Documentos/Github/sensores/microRostest/scripts
 
 ### Error: "Permission denied /dev/ttyUSB0"
 
-**Causa:** Usuario sin permisos USB (no está en el grupo `dialout`)
+**Causa:** Usuario sin permisos USB
 
 **Solución:**
 ```bash
-# Opción 1: Con el script
 ./microros.sh fix-permissions
-
-# Opción 2: Manual
-sudo usermod -a -G dialout $USER
-```
-
-**Importante:** Después de ejecutar esto, debes:
-1. **Cerrar sesión** y volver a iniciar sesión (recomendado)
-2. O ejecutar `newgrp dialout` (solo para la terminal actual)
-
-**Verificar que funcionó:**
-```bash
-groups | grep dialout    # Debe mostrar 'dialout'
-ls -la /dev/ttyUSB0      # Deberías poder leerlo sin 'Permission denied'
+# Luego cerrar sesión y volver a entrar
 ```
 
 ### El tópico `/temperatura` no aparece
