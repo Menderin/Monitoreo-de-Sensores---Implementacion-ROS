@@ -1,12 +1,15 @@
 # 🎯 Guía Rápida: ESP32 como Nodo ROS
 
+**Última actualización:** 14 de enero de 2026
+
 ## ✅ El código ya está listo
 
-Tu archivo [sensor_temp.c](main/sensor_temp.c) ahora es un **nodo ROS completo** que:
+Tu archivo [sensor_tempV3.c](../main/sensor_tempV3.c) ahora es un **nodo ROS completo** que:
 
-✓ Lee temperatura del sensor DS18B20  
+✓ Lee pH del sensor CWT-BL (rango 0-14)
+✓ Lee temperatura del sensor CWT-BL (rango -20 a 80°C)  
 ✓ Se conecta automáticamente al micro-ROS Agent en el PC  
-✓ Publica datos en el tópico `/temperatura` cada 2 segundos  
+✓ Publica datos en los tópicos `/ph` y `/temperatura` cada 4 segundos  
 ✓ Funciona como un nodo ROS estándar  
 
 ---

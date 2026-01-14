@@ -2,6 +2,8 @@
 
 Sistema completo de monitoreo ambiental usando ESP32 + sensor CWT-BL que publica datos de pH y temperatura en ROS 2 mediante comunicación serial (UART).
 
+**Última actualización:** 14 de enero de 2026
+
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-5.5.2-green)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-Serial-orange)](https://micro.ros.org/)

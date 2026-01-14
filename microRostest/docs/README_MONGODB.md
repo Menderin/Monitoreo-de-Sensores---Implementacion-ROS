@@ -1,5 +1,7 @@
 # 🗄️ Sistema de Monitoreo con MongoDB Atlas
 
+**Última actualización:** 14 de enero de 2026
+
 ## 📊 Arquitectura
 
 ```

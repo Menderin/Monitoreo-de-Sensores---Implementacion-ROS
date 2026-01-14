@@ -2,6 +2,8 @@
 
 Carpeta de utilidades para desarrollo con micro-ROS + ESP32 + ROS 2.
 
+**Última actualización:** 14 de enero de 2026
+
 ## 📄 Archivos
 
 ### 🎛️ microros.sh (★ SCRIPT PRINCIPAL TODO-EN-UNO)

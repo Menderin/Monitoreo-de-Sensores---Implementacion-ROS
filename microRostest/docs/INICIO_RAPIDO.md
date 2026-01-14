@@ -1,11 +1,14 @@
-# 🚀 Inicio Rápido - micro-ROS + ESP32 + DS18B20
+# 🚀 Inicio Rápido - micro-ROS + ESP32 + Sensor CWT-BL
 
-**Objetivo:** Poner en funcionamiento el sistema de temperatura en menos de 5 minutos.
+**Última actualización:** 14 de enero de 2026
+
+**Objetivo:** Poner en funcionamiento el sistema de pH y temperatura en menos de 5 minutos.
 
 **Requisitos previos:**
 - ✅ ESP32 con firmware ya flasheado y conectado por USB
 - ✅ micro-ROS Agent instalado en `~/microros_ws`
 - ✅ ROS 2 Jazzy instalado en `/opt/ros/jazzy`
+- ✅ MongoDB Atlas configurado (opcional, para almacenamiento)
 - ✅ Permisos USB configurados (grupo `dialout`)
 
 > 💡 **Primera vez?** Ver [README.md](../README.md) para instalación completa.

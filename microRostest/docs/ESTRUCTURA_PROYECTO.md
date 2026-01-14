@@ -1,5 +1,7 @@
 # 📁 Estructura del Proyecto microRostest
 
+**Última actualización:** 14 de enero de 2026
+
 ## 📂 Directorios principales
 
 ```

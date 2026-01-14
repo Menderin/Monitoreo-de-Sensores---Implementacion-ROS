@@ -2,12 +2,15 @@
 
 <div align="center">
 
+**Última actualización:** 14 de enero de 2026
+
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-Serial-orange.svg)](https://micro.ros.org/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Sistema IoT de monitoreo ambiental usando ESP32 + ROS 2 + micro-ROS**
+**Sistema IoT de monitoreo ambiental usando ESP32 + ROS 2 + micro-ROS + MongoDB**
 
 [Características](#-características) •
 [Proyectos](#-proyectos) •
@@ -29,6 +32,8 @@ Repositorio de proyectos de **sensores IoT integrados con ROS 2** mediante **mic
 - 📡 **Comunicación UART Serial** - Conexión directa ESP32 ↔ PC (115200 baud)
 - 🔧 **Scripts de automatización** - Herramientas unificadas para build, flash y monitoreo
 - 📊 **Datos en tiempo real** - Publicación continua a topics ROS 2
+- ☁️ **MongoDB Atlas integrado** - Almacenamiento automático en nube
+- 💾 **Respaldo local** - JSON Lines para persistencia local
 - 🐍 **Python subscribers** - Nodos de ejemplo para procesar datos
 - 📚 **Documentación completa** - Guías paso a paso y troubleshooting
 

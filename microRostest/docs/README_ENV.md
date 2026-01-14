@@ -1,5 +1,7 @@
 # Configuración de Variables de Entorno
 
+**Última actualización:** 14 de enero de 2026
+
 ## 📋 Pasos para configurar MongoDB Atlas
 
 ### 1. Instalar dependencias
