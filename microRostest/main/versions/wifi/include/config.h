@@ -33,7 +33,7 @@
 // CONFIGURACIÓN DE PUBLICACIÓN
 // ========================================
 
-#define PUBLISH_INTERVAL_MS 1000
+#define PUBLISH_INTERVAL_MS 4000
 
 // ========================================
 // CONFIGURACIÓN DE TAREAS

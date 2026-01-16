@@ -33,3 +33,6 @@ datos_sensores/
 .env
 .env.local
 main/wifi_config.h
+main/.env
+main/.env.local
+sensores/microRostest/.env
