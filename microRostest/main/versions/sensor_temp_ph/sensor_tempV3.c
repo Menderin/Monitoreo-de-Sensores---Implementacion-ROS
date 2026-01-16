@@ -33,8 +33,15 @@
 // Calibración de temperatura (ajusta según mediciones reales)
 #define TEMP_OFFSET_CAL     -1.5  // Offset de calibración en °C (ajustable)
 
-// Calibración de pH (ajusta según soluciones buffer)
-#define PH_OFFSET_CAL       0.0   // Offset de calibración en unidades de pH (ajustable)
+// Calibración de pH - Regresión lineal con soluciones buffer
+// Calibración realizada: 15 enero 2026
+// Puntos de calibración (valores ADC ESP32):
+//   pH 4.01 →  914 mV
+//   pH 6.86 → 1701 mV
+//   pH 9.18 → 2292 mV
+// Fórmula: pH = m × V_mV + b
+#define PH_SLOPE            0.00375   // Pendiente (m)
+#define PH_INTERCEPT        0.58      // Intercepto (b)
 
 // Configuración micro-ROS
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ESP_LOGE(TAG, "Failed status on line %d: %d. Aborting.",__LINE__,(int)temp_rc); vTaskDelete(NULL);}}
@@ -80,18 +87,27 @@ float voltage_to_temperature(int voltage_mv) {
 }
 
 /**
- * @brief Convierte voltaje a pH según calibración con soluciones buffer
- * Fórmula calibrada: pH = 0.0041 × V(mV) - 0.34
- * Calibración realizada con:
- *   pH 4.01: 1060mV | pH 6.5: 1675mV | pH 8.93: 2260mV
- * Rango: 0 a 14 pH
+ * @brief Convierte voltaje a pH
+ * 
+ * Con divisor de tensión 5V→3.3V para ESP32:
+ *   0 mV = 0 pH
+ *   3300 mV = 14 pH
+ *   pH = V_mV × (14/3300) = V_mV × 0.00424
+ * 
+ * Voltajes esperados (con divisor):
+ *   pH 4.01 →  944 mV
+ *   pH 6.86 → 1617 mV
+ *   pH 4.01 →  900 mV
+ *   pH 6.86 → 1650 mV
+ *   pH 9.18 → 2245 mV
  */
 float voltage_to_ph(int voltage_mv) {
-    // Fórmula calibrada por regresión lineal
-    float ph = (voltage_mv * 0.0041) - 0.34;
+    // Regresión lineal: pH = m × V_mV + b
+    float ph = (voltage_mv * PH_SLOPE) + PH_INTERCEPT;
     
-    // Aplicar offset adicional si se necesita ajuste fino
-    ph += PH_OFFSET_CAL;
+    // Limitar a rango válido 0-14
+    if (ph < 0.0) ph = 0.0;
+    if (ph > 14.0) ph = 14.0;
     
     return ph;
 }
@@ -187,7 +203,9 @@ float read_ph(void) {
     // Convertir voltaje a pH
     float ph = voltage_to_ph(voltage_mv);
     
-    ESP_LOGI(TAG, "🔬 pH DEBUG: RAW=%d, V=%dmV, pH calculado=%.2f", adc_raw, voltage_mv, ph);
+    // Log detallado para calibración
+    ESP_LOGI(TAG, "🔬 pH: RAW=%d | V=%dmV | pH=%.2f | Ref: 4.01@914mV, 6.86@1701mV, 9.18@2292mV", 
+             adc_raw, voltage_mv, ph);
     return ph;
 }
 

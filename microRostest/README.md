@@ -2,7 +2,7 @@
 
 Sistema completo de monitoreo ambiental usando ESP32 + sensor CWT-BL que publica datos de pH y temperatura en ROS 2 mediante comunicación serial (UART).
 
-**Última actualización:** 14 de enero de 2026
+**Última actualización:** 15 de enero de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF](https://img.shields.io/badge/ESP--IDF-5.5.2-green)](https://docs.espressif.com/projects/esp-idf/)
@@ -653,22 +653,33 @@ idf.py -p /dev/ttyUSB0 build flash monitor
 
 ### Hardware
 - **Microcontrolador:** ESP32 (Xtensa dual-core @ 160MHz)
-- **Sensor:** DS18B20 (rango: -55°C a +125°C, resolución: 0.0625°C)
+- **Sensor:** CWT-BL dual (pH: 0-14, rango 0-5V / Temperatura: -20°C a 80°C, rango 0-5V)
+- **Conversión ADC:** Divisor de tensión 5V→3.3V para compatibilidad ESP32
 - **Comunicación:** UART (115200 baud, 8N1)
-- **Protocolo sensor:** 1-Wire (OneWire)
+- **ADC:** GPIO39 (Temperatura) y GPIO36 (pH)
 
 ### Software
 - **Framework:** ESP-IDF 5.5.2
 - **Middleware:** micro-ROS (DDS-XRCE)
 - **ROS:** ROS 2 Jazzy
 - **Transporte:** Serial custom (no UDP/WiFi)
-- **Tamaño firmware:** ~284 KB
+- **Tamaño firmware:** ~270 KB
+
+### Calibración pH (15 enero 2026)
+**Fórmula de conversión:** `pH = 0.00375 × V_mV + 0.58`
+
+**Puntos de calibración (valores ADC ESP32):**
+- pH 4.01 → 914 mV
+- pH 6.86 → 1701 mV
+- pH 9.18 → 2292 mV
+
+**Precisión:** ±0.08 pH (dentro de tolerancia ±0.1 para sensores analógicos)
 
 ### Rendimiento
 - **Latencia:** ~50ms (lectura sensor + serialización + transmisión)
-- **Frecuencia publicación:** 0.5 Hz (configurable)
+- **Frecuencia publicación:** 0.25 Hz (cada 4 segundos)
 - **Consumo memoria RAM:** ~170 KB
-- **Consumo memoria Flash:** ~280 KB
+- **Consumo memoria Flash:** ~270 KB
 
 ---
 
@@ -678,7 +689,7 @@ idf.py -p /dev/ttyUSB0 build flash monitor
 - [ESP-IDF Documentation](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/) - Framework ESP32
 - [micro-ROS Documentation](https://micro.ros.org/docs/) - micro-ROS oficial
 - [ROS 2 Jazzy Documentation](https://docs.ros.org/en/jazzy/) - ROS 2
-- [DS18B20 Datasheet](https://www.maximintegrated.com/en/products/sensors/DS18B20.html) - Sensor de temperatura
+- [CWT-BL Sensor](https://es.aliexpress.com/item/1005006009467287.html) - Sensor dual pH + Temperatura
 
 ### Repositorios GitHub
 - [micro-ROS/micro_ros_espidf_component](https://github.com/micro-ROS/micro_ros_espidf_component) - Componente micro-ROS
@@ -687,7 +698,7 @@ idf.py -p /dev/ttyUSB0 build flash monitor
 
 ### Tutoriales y Guías
 - [micro-ROS for ESP32](https://github.com/micro-ROS/micro_ros_espidf_component#usage) - Getting started
-- [OneWire Protocol](https://www.maximintegrated.com/en/design/technical-documents/tutorials/1/1796.html) - Protocolo 1-Wire
+- [ADC Calibration ESP32](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc_calibration.html) - Calibración ADC
 
 ---
 
@@ -759,5 +770,5 @@ Este proyecto es de código abierto. Ver [LICENSE](LICENSE) para más detalles.
 
 ---
 
-**Última actualización:** 9 de enero de 2026  
-**Versión:** 1.0 (Serial UART - Estable)
+**Última actualización:** 15 de enero de 2026  
+**Versión:** 2.0 (CWT-BL dual pH+Temp - Calibrado)

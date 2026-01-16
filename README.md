@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**Última actualización:** 14 de enero de 2026
+**Última actualización:** 15 de enero de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)

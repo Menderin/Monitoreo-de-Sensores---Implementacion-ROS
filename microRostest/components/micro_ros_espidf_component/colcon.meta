@@ -26,7 +26,7 @@
                 "-DUCLIENT_PIC=OFF",
                 "-DUCLIENT_PROFILE_DISCOVERY=ON",
                 "-DUCLIENT_PROFILE_UDP=ON",
-                "-DUCLIENT_PROFILE_CUSTOM_TRANSPORT=ON",
+                "-DUCLIENT_PROFILE_CUSTOM_TRANSPORT=OFF",
                 "-DUCLIENT_PROFILE_SERIAL=OFF",
                 "-DUCLIENT_PROFILE_TCP=OFF",
                 "-DUCLIENT_MIN_HEARTBEAT_TIME_INTERVAL=1"
@@ -35,8 +35,7 @@
         "rmw_microxrcedds": {
             "cmake-args": [
                 "-DRMW_UXRCE_XML_BUFFER_LENGTH=400",
-                "-DRMW_UXRCE_TRANSPORT=custom",
-                "-DRMW_UXRCE_TRANSPORT_CUSTOM=1",
+                "-DRMW_UXRCE_TRANSPORT=udp",
                 "-DRMW_UXRCE_MAX_NODES=1",
                 "-DRMW_UXRCE_MAX_PUBLISHERS=2",
                 "-DRMW_UXRCE_MAX_SUBSCRIPTIONS=2",

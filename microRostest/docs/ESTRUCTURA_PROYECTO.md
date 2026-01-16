@@ -1,6 +1,6 @@
 # 📁 Estructura del Proyecto microRostest
 
-**Última actualización:** 14 de enero de 2026
+**Última actualización:** 15 de enero de 2026
 
 ## 📂 Directorios principales
 
@@ -72,12 +72,13 @@ microRostest/
 
 ### main/sensor_temp.c
 **Nodo micro-ROS en ESP32**
-- Lee sensor DS18B20 (GPIO 4, protocolo OneWire)
-- Publica en tópico `/temperatura` (std_msgs/Float32)
-- Frecuencia: 0.5 Hz (cada 2 segundos)
+- Lee sensor CWT-BL (pH en GPIO36 / Temp en GPIO39, ADC analógico)
+- Publica en tópicos `/ph` y `/temperatura` (std_msgs/Float32)
+- Frecuencia: 0.25 Hz (cada 4 segundos)
 - Usa transporte serial UART (NO WiFi)
 - Se conecta automáticamente al micro-ROS Agent
 - Reintentos automáticos cada 10s si Agent no disponible
+- **Calibración pH:** Regresión lineal con 3 puntos buffer (pH = 0.00375 × V_mV + 0.58)
 
 ### main/esp32_serial_transport.c/h
 **Transporte serial custom**
@@ -159,8 +160,8 @@ Terminal 3 (Verificar):     ./microros.sh listen
 ### ESP32
 - ESP-IDF v5.5.2
 - micro-ROS component
-- ds18b20 (sensor)
-- onewire_bus (comunicación)
+- CWT-BL (sensor dual pH + temperatura analógico)
+- ADC con calibración line fitting
 
 ### PC
 - ROS 2 Jazzy

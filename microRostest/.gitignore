@@ -32,3 +32,4 @@ datos_sensores/
 # Configuraciones locales
 .env
 .env.local
+main/wifi_config.h
