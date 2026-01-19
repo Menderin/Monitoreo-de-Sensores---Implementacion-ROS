@@ -29,10 +29,13 @@ datos_sensores/
 *.bak
 *.orig
 
-# Configuraciones locales
+# Configuraciones locales (credenciales WiFi y variables de entorno)
 .env
 .env.local
-main/wifi_config.h
 main/.env
 main/.env.local
 sensores/microRostest/.env
+
+# Archivos de configuración WiFi generados (contienen credenciales)
+**/wifi_config.h
+wifi_config.h

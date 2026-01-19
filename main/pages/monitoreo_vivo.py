@@ -35,6 +35,22 @@ def render_monitoreo_vivo(df):
             <img id="bg-microalgas" src="data:image/webp;base64,{img_b64}">
         """, unsafe_allow_html=True)
     
+    # CSS para hacer que la sección superior ocupe toda la pantalla
+    st.markdown("""
+        <style>
+        /* Agregar espacio superior para empujar el contenido hacia abajo */
+        [data-testid="stAppViewContainer"] > .main > div:first-child {
+            padding-top: 15vh !important;
+            padding-bottom: 35vh !important;
+        }
+        
+        /* Asegurar que la sección de gráficos comience en una nueva "página" */
+        .series-temporales-section {
+            padding-top: 10vh;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Header
     st.markdown("""
         <div class="main-header">
@@ -75,6 +91,7 @@ def render_monitoreo_vivo(df):
     st.markdown("---")
     
     # Gráficos de series temporales (últimos 5 minutos)
+    st.markdown('<div class="series-temporales-section">', unsafe_allow_html=True)
     st.markdown("### Series Temporales (Últimos 5 Minutos)")
     
     col_ph, col_temp = st.columns(2)
@@ -86,7 +103,7 @@ def render_monitoreo_vivo(df):
             'ph',
             'pH'
         )
-        st.plotly_chart(fig_ph, use_container_width=True)
+        st.plotly_chart(fig_ph, width='stretch')
     
     with col_temp:
         fig_temp = crear_grafico_lineas(
@@ -95,4 +112,6 @@ def render_monitoreo_vivo(df):
             'temperatura',
             'Temperatura (°C)'
         )
-        st.plotly_chart(fig_temp, use_container_width=True)
+        st.plotly_chart(fig_temp, width='stretch')
+    
+    st.markdown('</div>', unsafe_allow_html=True)
