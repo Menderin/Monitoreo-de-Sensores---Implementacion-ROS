@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-commit hook that calls PowerShell script
+# This is a wrapper for Windows compatibility
+
+powershell.exe -ExecutionPolicy Bypass -File ".githooks/pre-commit.ps1"
+exit $?

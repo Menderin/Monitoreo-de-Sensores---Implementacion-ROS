@@ -1,23 +1,44 @@
-# Archivos de entorno con credenciales
-.env
-*.env
-.env.local
-.env.*.local
+# ============================================
+# 🔐 ARCHIVOS SENSIBLES - MÁXIMA PRIORIDAD
+# ============================================
+# Protección contra archivos .env en cualquier ubicación
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.template
+**/.env.local
+**/.env.production
+**/.env.development
+**/.env.test
 
-# Credenciales y configuración sensible
+# Credenciales y secretos
+**/secrets.json
+**/credentials.json
+**/config.local.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/serviceAccountKey.json
 **/wifi_config.h
+/resource/
+
+
+# Archivos de configuración con credenciales
+**/database.ini
+**/db.config
+**/.password
 config.ini
 secrets.yaml
 
-# Python
+# ============================================
+# 🐍 PYTHON (Análisis de Datos / Backend)
+# ============================================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -34,33 +55,167 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+virtualenv/
+
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb_checkpoints/
+.jupyter/
+*.nb.html
 
-# IDEs
-.vscode/
+# PyCharm
 .idea/
-*.swp
-*.swo
-*~
 
-# Sistema operativo
-.DS_Store
-Thumbs.db
+# VS Code
+.vscode/
+*.code-workspace
 
-# Logs
-*.log
-logs/
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
-# Base de datos local
-*.db
-*.sqlite
-*.sqlite3
+# Data files (común en análisis de datos)
+*.csv
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+data/raw/**
+data/processed/**
+!data/.gitkeep
+
+# ============================================
+# 📱 ESP32 / PlatformIO
+# ============================================
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+.vscode/c_cpp_properties.json
+.vscode/launch.json
 
 # ESP-IDF
 build/
 sdkconfig
 sdkconfig.old
 
-# MongoDB
+# ============================================
+# 🌐 NODE.JS / DASHBOARD (React/Vue/Angular)
+# ============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+.next/
+out/
+.nuxt/
+.cache/
+
+# Package managers
+.yarn/
+.pnp.*
+package-lock.json # Opcional: descomenta si prefieres yarn
+yarn.lock # Opcional: descomenta si prefieres npm
+
+# ============================================
+# 📊 DATOS Y LOGS
+# ============================================
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# MongoDB local
+data/db/
+mongo-data/
 dump/
+
+# ============================================
+# 🖥️ SISTEMA OPERATIVO
+# ============================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+
+# ============================================
+# 🔧 IDEs y Editores
+# ============================================
+*.swp
+*.swo
+*.swn
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# 📦 ARCHIVOS TEMPORALES
+# ============================================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+.cache/
+
+# ============================================
+# 🧪 TESTING
+# ============================================
+coverage/
+.nyc_output/
+test-results/
+*.spec.js.snap
+
+# ============================================
+# 🚀 DEPLOYMENT
+# ============================================
+.vercel/
+.netlify/
+.firebase/
+
+# ============================================
+# ROS (Robot Operating System)
+# ============================================
+install/
+log/
+build/
+devel/
+.catkin_workspace
+*.pyc
+
+# ============================================
+# 📝 EXTRAS
+# ============================================
+TODO.local.md
+*.draft
+.scratch/
