@@ -8,7 +8,6 @@
 [![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-Serial-orange.svg)](https://micro.ros.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Sistema IoT de monitoreo ambiental usando ESP32 + ROS 2 + micro-ROS + MongoDB**
 
@@ -239,12 +238,6 @@ data: 25.25
 - [ ] Implementar transporte WiFi (UDP)
 - [ ] Alertas por valores fuera de rango
 - [ ] OTA updates para firmware
-
----
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
 
 ---
 
