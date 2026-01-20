@@ -15,19 +15,19 @@ def render_dispositivos(df):
         **Modelo:** Sensor pH Analógico  
         **Rango:** 0 - 14 pH  
         **Precisión:** ±0.1 pH  
-        **Estado:** ✅ Operativo
+        **Estado:**  Operativo
         """)
         
         st.metric("Última Lectura", f"{df['ph'].iloc[-1]:.2f} pH")
         st.metric("Total de Lecturas", len(df))
         
     with col_dev2:
-        st.markdown("#### 🌡️ Sensor de Temperatura")
+        st.markdown("#### 🌡 Sensor de Temperatura")
         st.info("""
         **Modelo:** DHT22 / DS18B20  
         **Rango:** -40°C a 80°C  
         **Precisión:** ±0.5°C  
-        **Estado:** ✅ Operativo
+        **Estado:**  Operativo
         """)
         
         st.metric("Última Lectura", f"{df['temperatura'].iloc[-1]:.1f}°C")
@@ -43,4 +43,4 @@ def render_dispositivos(df):
     with col_info2:
         st.metric("Colección", Settings.MONGO_COLLECTION)
     with col_info3:
-        st.metric("Estado Conexión", "✅ Conectado")
+        st.metric("Estado Conexión", " Conectado")

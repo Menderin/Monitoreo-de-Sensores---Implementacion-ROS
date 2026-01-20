@@ -1,9 +1,13 @@
 """Configuración general de la aplicación"""
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv()
+# ─────────────────────────────────────────────────────────
+# Cargar .env desde la carpeta database/ centralizada
+# ─────────────────────────────────────────────────────────
+db_env_path = Path(__file__).parent.parent.parent / 'database' / '.env'
+load_dotenv(db_env_path)
 
 class Settings:
     """Configuración centralizada de la aplicación"""

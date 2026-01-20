@@ -60,7 +60,7 @@ def render_analisis_estadistico(df):
             st.metric("Máximo", f"{df['ph'].max():.2f}")
     
     with col_stats2:
-        st.markdown("##### 🌡️ Temperatura")
+        st.markdown("##### 🌡 Temperatura")
         col_temp1, col_temp2, col_temp3 = st.columns(3)
         with col_temp1:
             st.metric("Media", f"{df['temperatura'].mean():.1f}°C")

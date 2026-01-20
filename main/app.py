@@ -43,10 +43,10 @@ def main():
     if not df.empty:
         # Crear pestañas de navegación
         tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 MONITOREO EN VIVO",
-            "📈 ANÁLISIS ESTADÍSTICO", 
-            "📋 REGISTROS",
-            "🔧 DISPOSITIVOS"
+            "MONITOREO EN VIVO",
+            "ANÁLISIS ESTADÍSTICO", 
+            "REGISTROS",
+            "DISPOSITIVOS"
         ])
         
         # Renderizar cada pestaña
@@ -68,7 +68,7 @@ def main():
             st.rerun()
     
     else:
-        st.warning("⚠️ No hay datos disponibles para el rango temporal seleccionado")
+        st.warning("No hay datos disponibles para el rango temporal seleccionado")
         st.info(f"Intentando conectar a: {Settings.MONGO_DB}/{Settings.MONGO_COLLECTION}")
 
 if __name__ == "__main__":

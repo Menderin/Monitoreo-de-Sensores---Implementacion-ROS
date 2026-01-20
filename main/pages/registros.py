@@ -32,7 +32,7 @@ def render_registros(df):
     # Botón de descarga
     csv = df_display.to_csv(index=False).encode('utf-8')
     st.download_button(
-        label="⬇️ Descargar CSV",
+        label="⬇ Descargar CSV",
         data=csv,
         file_name=f'datos_sensores_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
         mime='text/csv',
