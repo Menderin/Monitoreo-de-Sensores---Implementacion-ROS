@@ -19,17 +19,29 @@ def render_monitoreo_vivo(df):
     if img_b64:
         st.markdown(f"""
             <style>
+            /* Fondo fijo de microalgas */
             #bg-microalgas {{
                 position: fixed;
                 top: 0;
                 left: 0;
                 width: 100vw;
                 height: 100vh;
-                z-index: 0;
+                z-index: -1;
                 object-fit: cover;
                 opacity: 0.5;
                 filter: brightness(1.1) contrast(1.1) saturate(1.3);
                 pointer-events: none;
+            }}
+            
+            /* Ocultar duplicados de la imagen de fondo */
+            #bg-microalgas ~ #bg-microalgas {{
+                display: none !important;
+            }}
+            
+            /* Asegurar que el contenido esté sobre el fondo */
+            [data-testid="stAppViewContainer"] {{
+                position: relative;
+                z-index: 1;
             }}
             </style>
             <img id="bg-microalgas" src="data:image/webp;base64,{img_b64}">

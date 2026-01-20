@@ -8,7 +8,7 @@ def render_analisis_estadistico(df):
     """Renderiza la página de análisis estadístico"""
 
     # Imagen de fondo
-    img_path = Path(__file__).parent.parent / 'assets' / 'microalgas.webp'
+    img_path = Path(__file__).parent.parent / 'assets' / 'alga marina.webp'
     img_b64 = get_image_base64(img_path) if img_path.exists() else None
     
     if img_b64:
