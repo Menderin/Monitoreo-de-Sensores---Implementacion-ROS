@@ -88,7 +88,15 @@ source_esp_idf() {
         return 1
     fi
     info "Inicializando entorno ESP-IDF..."
-    source "$ESP_IDF_PATH/export.sh" > /dev/null 2>&1
+    source "$ESP_IDF_PATH/export.sh"
+    
+    # Verificar que idf.py esté disponible
+    if ! command -v idf.py &> /dev/null; then
+        error "idf.py no disponible después de cargar ESP-IDF"
+        error "Verifica la instalación de ESP-IDF en: $ESP_IDF_PATH"
+        return 1
+    fi
+    
     success "Entorno ESP-IDF listo"
 }
 
@@ -119,7 +127,7 @@ build_flash_monitor() {
     sudo fuser -k "$ESP_PORT" 2>/dev/null || true
     sleep 1
     
-    idf.py -p "$ESP_PORT" build flash monitor
+    idf.py -p "$ESP_PORT" -b 115200 build flash monitor
 }
 
 clean_esp32() {

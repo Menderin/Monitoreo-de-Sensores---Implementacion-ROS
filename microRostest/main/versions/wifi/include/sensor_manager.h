@@ -29,6 +29,12 @@ float sensor_read_temperature(void);
 float sensor_read_ph(void);
 
 /**
+ * @brief Lee el voltaje raw del sensor de pH (para calibración)
+ * @return Voltaje en mV
+ */
+float sensor_read_ph_voltage_raw(void);
+
+/**
  * @brief Limpia los recursos del ADC
  */
 void sensor_manager_deinit(void);

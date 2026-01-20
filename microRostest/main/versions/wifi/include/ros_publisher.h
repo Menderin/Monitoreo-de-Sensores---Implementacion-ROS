@@ -16,6 +16,7 @@
 typedef struct {
     float temperature;
     float ph;
+    float voltage_raw_ph;  // Voltaje raw en mV para calibración
 } sensor_data_t;
 
 /**

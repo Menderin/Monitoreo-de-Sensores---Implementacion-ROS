@@ -50,6 +50,7 @@ void micro_ros_task(void *arg)
         // Leer sensores
         data.temperature = sensor_read_temperature();
         data.ph = sensor_read_ph();
+        data.voltage_raw_ph = sensor_read_ph_voltage_raw();
         
         // Publicar datos
         ros_publisher_publish(&data);

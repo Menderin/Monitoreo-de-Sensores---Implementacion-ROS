@@ -44,9 +44,11 @@ static rcl_node_t node;
 
 static rcl_publisher_t temperature_publisher;
 static rcl_publisher_t ph_publisher;
+static rcl_publisher_t voltage_raw_ph_publisher;
 
 static std_msgs__msg__Float32 temperature_msg;
 static std_msgs__msg__Float32 ph_msg;
+static std_msgs__msg__Float32 voltage_raw_ph_msg;
 
 static bool initialized = false;
 
@@ -113,6 +115,14 @@ bool ros_publisher_init(void)
         TOPIC_PH));
     ESP_LOGI(TAG, "Publicador creado: '/%s'", TOPIC_PH);
     
+    // Crear publicador de voltaje raw pH (para calibración)
+    RCCHECK(rclc_publisher_init_default(
+        &voltage_raw_ph_publisher,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+        TOPIC_VOLTAGE_RAW_PH));
+    ESP_LOGI(TAG, "Publicador creado: '/%s' (calibración)", TOPIC_VOLTAGE_RAW_PH);
+    
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  SISTEMA ROS LISTO PARA PUBLICAR");
     ESP_LOGI(TAG, "========================================");
@@ -136,12 +146,15 @@ bool ros_publisher_publish(const sensor_data_t *data)
     // Actualizar mensajes
     temperature_msg.data = data->temperature;
     ph_msg.data = data->ph;
+    voltage_raw_ph_msg.data = data->voltage_raw_ph;
     
     // Publicar
     RCSOFTCHECK(rcl_publish(&temperature_publisher, &temperature_msg, NULL));
     RCSOFTCHECK(rcl_publish(&ph_publisher, &ph_msg, NULL));
+    RCSOFTCHECK(rcl_publish(&voltage_raw_ph_publisher, &voltage_raw_ph_msg, NULL));
     
-    ESP_LOGI(TAG, "Temp: %.2f °C | pH: %.2f", data->temperature, data->ph);
+    ESP_LOGI(TAG, "Temp: %.2f °C | pH: %.2f | Raw: %.2f mV", 
+             data->temperature, data->ph, data->voltage_raw_ph);
     
     return true;
 }
@@ -155,6 +168,7 @@ void ros_publisher_deinit(void)
     // Limpiar publicadores
     rcl_publisher_fini(&temperature_publisher, &node);
     rcl_publisher_fini(&ph_publisher, &node);
+    rcl_publisher_fini(&voltage_raw_ph_publisher, &node);
     
     // Limpiar nodo
     rcl_node_fini(&node);
