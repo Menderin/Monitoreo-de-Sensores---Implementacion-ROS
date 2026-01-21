@@ -8,10 +8,15 @@
 #include "../wifi_config.h"
 
 #include "esp_log.h"
+#include "esp_system.h"
+#include "esp_mac.h"
+#include "esp_wifi.h"
+#include "freertos/task.h"
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h>
 #include <rclc/rclc.h>
 #include <std_msgs/msg/float32.h>
+#include <std_msgs/msg/float32_multi_array.h>
 #include <rmw_microros/rmw_microros.h>
 
 static const char *TAG = "ROS_PUBLISHER";
@@ -42,15 +47,41 @@ static rclc_support_t support;
 static rcl_allocator_t allocator;
 static rcl_node_t node;
 
-static rcl_publisher_t temperature_publisher;
-static rcl_publisher_t ph_publisher;
-static rcl_publisher_t voltage_raw_ph_publisher;
+// Publicador único con array de floats
+static rcl_publisher_t sensor_data_publisher;
+static std_msgs__msg__Float32MultiArray sensor_data_msg;
 
-static std_msgs__msg__Float32 temperature_msg;
-static std_msgs__msg__Float32 ph_msg;
-static std_msgs__msg__Float32 voltage_raw_ph_msg;
+// Optimización: Buffers estáticos preallocados (no fragmentan HEAP)
+static float sensor_data_array[5];  // [temp, pH, voltage, mac_part1, mac_part2]
+static uint8_t mac_address[6] = {0};
+
+// Preallocación de secuencia para evitar malloc en runtime
+static rosidl_runtime_c__float__Sequence data_sequence = {
+    .data = NULL,  // Se asigna en init
+    .size = 0,
+    .capacity = 5
+};
 
 static bool initialized = false;
+
+// ========================================
+// FUNCIONES PRIVADAS
+// ========================================
+
+static void get_device_mac_floats(float *mac_part1, float *mac_part2) {
+    // Leer MAC una sola vez
+    if (mac_address[0] == 0) {
+        esp_read_mac(mac_address, ESP_MAC_WIFI_STA);
+    }
+    
+    // Dividir MAC en 2 partes de 24 bits cada una
+    // MAC: AA:BB:CC:DD:EE:FF -> 0xAABBCC y 0xDDEEFF
+    uint32_t part1 = (mac_address[0] << 16) | (mac_address[1] << 8) | mac_address[2];
+    uint32_t part2 = (mac_address[3] << 16) | (mac_address[4] << 8) | mac_address[5];
+    
+    *mac_part1 = (float)part1;
+    *mac_part2 = (float)part2;
+}
 
 // ========================================
 // FUNCIONES PÚBLICAS
@@ -95,33 +126,48 @@ bool ros_publisher_init(void)
     ESP_LOGI(TAG, "  CONECTADO A MICRO-ROS AGENT!");
     ESP_LOGI(TAG, "========================================");
     
-    // Crear nodo
-    RCCHECK(rclc_node_init_default(&node, NODE_NAME, "", &support));
-    ESP_LOGI(TAG, "Nodo creado: '%s'", NODE_NAME);
+    // Optimización AGRESIVA: Liberar máxima memoria WiFi
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);  // Power save mínimo
+    vTaskDelay(pdMS_TO_TICKS(500));  // Delay mayor para estabilizar
     
-    // Crear publicador de temperatura
-    RCCHECK(rclc_publisher_init_default(
-        &temperature_publisher,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        TOPIC_TEMPERATURE));
-    ESP_LOGI(TAG, "Publicador creado: '/%s'", TOPIC_TEMPERATURE);
+    // Debug: Mostrar memoria disponible
+    ESP_LOGI(TAG, "HEAP libre antes de crear nodo: %lu bytes", esp_get_free_heap_size());
     
-    // Crear publicador de pH
-    RCCHECK(rclc_publisher_init_default(
-        &ph_publisher,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        TOPIC_PH));
-    ESP_LOGI(TAG, "Publicador creado: '/%s'", TOPIC_PH);
+    // Leer MAC para nombre único de nodo
+    if (mac_address[0] == 0) {
+        esp_read_mac(mac_address, ESP_MAC_WIFI_STA);
+    }
     
-    // Crear publicador de voltaje raw pH (para calibración)
+    // Crear nombre de nodo dinámico para evitar colisiones DDS
+    char node_name[32];
+    snprintf(node_name, sizeof(node_name), "esp32_%02X%02X%02X", 
+             mac_address[3], mac_address[4], mac_address[5]);
+    
+    // Crear nodo con nombre único
+    RCCHECK(rclc_node_init_default(&node, node_name, "", &support));
+    ESP_LOGI(TAG, "Nodo creado: '%s' (ID único basado en MAC)", node_name);
+    ESP_LOGI(TAG, "HEAP libre después de nodo: %lu bytes", esp_get_free_heap_size());
+    
+    // Crear publicador único para sensor_data (Float32MultiArray)
     RCCHECK(rclc_publisher_init_default(
-        &voltage_raw_ph_publisher,
+        &sensor_data_publisher,
         &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-        TOPIC_VOLTAGE_RAW_PH));
-    ESP_LOGI(TAG, "Publicador creado: '/%s' (calibración)", TOPIC_VOLTAGE_RAW_PH);
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+        "sensor_data"));
+    ESP_LOGI(TAG, "Publicador creado: '/sensor_data' (Float32MultiArray)");
+    
+    // Optimización: Usar secuencia preallocada
+    data_sequence.data = sensor_data_array;
+    data_sequence.size = 5;
+    data_sequence.capacity = 5;
+    
+    sensor_data_msg.data = data_sequence;
+    
+    // Layout (opcional, para metadata) - sin alocar
+    sensor_data_msg.layout.dim.data = NULL;
+    sensor_data_msg.layout.dim.size = 0;
+    sensor_data_msg.layout.dim.capacity = 0;
+    sensor_data_msg.layout.data_offset = 0;
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  SISTEMA ROS LISTO PARA PUBLICAR");
@@ -143,18 +189,23 @@ bool ros_publisher_publish(const sensor_data_t *data)
         return false;
     }
     
-    // Actualizar mensajes
-    temperature_msg.data = data->temperature;
-    ph_msg.data = data->ph;
-    voltage_raw_ph_msg.data = data->voltage_raw_ph;
+    // Obtener MAC dividida en 2 floats
+    float mac_part1, mac_part2;
+    get_device_mac_floats(&mac_part1, &mac_part2);
+    
+    // Llenar array: [temp, pH, voltage, mac_part1, mac_part2]
+    sensor_data_array[0] = data->temperature;
+    sensor_data_array[1] = data->ph;
+    sensor_data_array[2] = data->voltage_raw_ph;
+    sensor_data_array[3] = mac_part1;
+    sensor_data_array[4] = mac_part2;
     
     // Publicar
-    RCSOFTCHECK(rcl_publish(&temperature_publisher, &temperature_msg, NULL));
-    RCSOFTCHECK(rcl_publish(&ph_publisher, &ph_msg, NULL));
-    RCSOFTCHECK(rcl_publish(&voltage_raw_ph_publisher, &voltage_raw_ph_msg, NULL));
+    RCSOFTCHECK(rcl_publish(&sensor_data_publisher, &sensor_data_msg, NULL));
     
-    ESP_LOGI(TAG, "Temp: %.2f °C | pH: %.2f | Raw: %.2f mV", 
-             data->temperature, data->ph, data->voltage_raw_ph);
+    ESP_LOGI(TAG, "Publicado: [%.2f, %.2f, %.2f, %.0f, %.0f]", 
+             sensor_data_array[0], sensor_data_array[1], sensor_data_array[2],
+             sensor_data_array[3], sensor_data_array[4]);
     
     return true;
 }
@@ -165,10 +216,8 @@ void ros_publisher_deinit(void)
         return;
     }
     
-    // Limpiar publicadores
-    rcl_publisher_fini(&temperature_publisher, &node);
-    rcl_publisher_fini(&ph_publisher, &node);
-    rcl_publisher_fini(&voltage_raw_ph_publisher, &node);
+    // Limpiar publicador
+    rcl_publisher_fini(&sensor_data_publisher, &node);
     
     // Limpiar nodo
     rcl_node_fini(&node);

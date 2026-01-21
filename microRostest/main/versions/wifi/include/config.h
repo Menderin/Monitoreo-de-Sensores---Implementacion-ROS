@@ -44,7 +44,9 @@
 // CONFIGURACIÓN DE TAREAS
 // ========================================
 
-#define MICRO_ROS_STACK_SIZE    16384
+// Optimizado: Stack reducido de 16KB a 8KB (-8KB RAM total)
+// CRÍTICO: Mínimo para micro-ROS sin crash
+#define MICRO_ROS_STACK_SIZE    8192
 #define MICRO_ROS_PRIORITY      5
 #define MICRO_ROS_CORE          1  // APP_CPU (Core 1)
 
