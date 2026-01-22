@@ -5,6 +5,19 @@ Sistema modular de visualización de datos de sensores
 
 import streamlit as st
 import time
+import os
+from dotenv import load_dotenv
+
+# Configurar variables de entorno antes de importar módulos propios
+# Intentar leer desde Streamlit secrets primero (producción)
+try:
+    os.environ['MONGO_URI'] = st.secrets["MONGO_URI"]
+    os.environ['MONGO_DB'] = st.secrets["MONGO_DB"]
+    os.environ['MONGO_COLLECTION'] = st.secrets["MONGO_COLLECTION"]
+    os.environ['MONGO_COLLECTION_DISPOSITIVOS'] = st.secrets["MONGO_COLLECTION_DISPOSITIVOS"]
+except (KeyError, FileNotFoundError):
+    # Fallback para desarrollo local con .env
+    load_dotenv()
 
 # Importar módulos propios
 from config import Settings
