@@ -87,6 +87,59 @@ class MongoHandler:
         except Exception as e:
             st.error(f"Error al cargar datos: {e}")
             return pd.DataFrame()
+
+# ==========================================
+# FUNCIÓN DE CARGA COMPLETA (Para Registros)
+# ==========================================
+@st.cache_data(ttl=300, show_spinner=False)
+def cargar_todos_datos():
+    """
+    Carga TODOS los datos de MongoDB sin límite de tiempo.
+    Diseñado para la página de Registros.
+    """
+    try:
+        client = MongoHandler.get_client()
+        if client is None:
+            return pd.DataFrame()
+        
+        db = client[Settings.MONGO_DB]
+        collection = db[Settings.MONGO_COLLECTION]
+        
+        # Consulta sin filtro de tiempo - obtiene TODO
+        datos = list(collection.find({}).sort('timestamp', -1))
+        
+        if not datos:
+            return pd.DataFrame()
+        
+        registros = []
+        for registro in datos:
+            try:
+                temp = registro.get('datos', {}).get('temperatura')
+                ph = registro.get('datos', {}).get('ph')
+                
+                if temp is not None and ph is not None:
+                    timestamp_utc = pd.to_datetime(registro.get('timestamp'))
+                    if timestamp_utc.tzinfo is None:
+                        timestamp_chile = timestamp_utc.tz_localize('UTC').tz_convert('America/Santiago')
+                    else:
+                        timestamp_chile = timestamp_utc.tz_convert('America/Santiago')
+                    
+                    registros.append({
+                        'timestamp': timestamp_chile,
+                        'dispositivo_id': registro.get('dispositivo_id', 'unknown'),
+                        'temperatura': temp,
+                        'ph': ph
+                    })
+            except:
+                continue
+        
+        df = pd.DataFrame(registros)
+        if df.empty: return df
+        df = df.sort_values('timestamp', ascending=False).reset_index(drop=True)
+        return df
+    except Exception as e:
+        st.error(f"Error al cargar todos los datos: {e}")
+        return pd.DataFrame()
     
     @staticmethod
     def limpiar_cache():

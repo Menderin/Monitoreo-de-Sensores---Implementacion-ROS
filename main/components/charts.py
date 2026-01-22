@@ -42,21 +42,24 @@ def crear_grafico_lineas(df, columna, titulo, color_key, yaxis_title):
         ),
         xaxis_title="Tiempo",
         yaxis_title=yaxis_title,
-        height=400,
+        height=350,  # Reducido para minimizar scroll innecesario
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white', size=12), # Tamaño base
+        font=dict(color='white', size=12),
+        margin=dict(b=100, t=80, l=60, r=40),  # Margen inferior aumentado a 100px
         xaxis=dict(
             gridcolor='rgba(255,255,255,0.1)',
-            title_font=dict(color='white', size=16), # <--- Título del eje más grande
-            tickfont=dict(color='white', size=14),   # <--- Números del eje más grandes
-            dtick=60000,                             # <--- Forzar intervalo de 1 minuto (60,000 ms)
-            tickformat="%H:%M:%S"                    # (Opcional) Formato de hora limpio
+            title_font=dict(color='white', size=16),
+            tickfont=dict(color='white', size=14),
+            dtick=60000,  # Intervalo de 1 minuto
+            tickformat="%H:%M:%S",
+            showticklabels=True,  # Asegurar que los labels están visibles
+            side='bottom'  # Forzar que el eje esté en la parte inferior
         ),
         yaxis=dict(
             gridcolor='rgba(255,255,255,0.1)',
-            title_font=dict(color='white', size=16), # <--- Título del eje más grande
-            tickfont=dict(color='white', size=14),   # <--- Números del eje más grandes
+            title_font=dict(color='white', size=16),
+            tickfont=dict(color='white', size=14),
             range=[y_min, y_max]
         ),
         hovermode='x unified'

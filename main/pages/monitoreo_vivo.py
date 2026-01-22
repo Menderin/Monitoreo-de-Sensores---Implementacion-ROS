@@ -1,5 +1,6 @@
 """Página de Monitoreo en Vivo"""
 import streamlit as st
+import textwrap
 from pathlib import Path
 from datetime import timedelta
 from utils import get_image_base64
@@ -15,9 +16,16 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
     img_path = Path(__file__).parent.parent / 'assets' / 'microalgas.webp'
     img_b64 = get_image_base64(img_path) if img_path.exists() else None
     
+    # CSS: Fondo y Ajustes de Espaciado (OPTIMIZADO)
     if img_b64:
-        st.markdown(f"""
+        st.markdown(textwrap.dedent(f"""
             <style>
+            /* --- FORZAR: SIN SCROLL --- */
+            html, body {{
+                overflow: hidden !important;
+                height: 100vh !important;
+            }}
+            
             /* Fondo fijo de microalgas */
             #bg-microalgas {{
                 position: fixed;
@@ -32,39 +40,39 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
                 pointer-events: none;
             }}
             
-            /* Ocultar duplicados de la imagen de fondo */
-            #bg-microalgas ~ #bg-microalgas {{
-                display: none !important;
-            }}
+            #bg-microalgas ~ #bg-microalgas {{ display: none !important; }}
             
-            /* Asegurar que el contenido esté sobre el fondo */
             [data-testid="stAppViewContainer"] {{
                 position: relative;
                 z-index: 1;
             }}
+            
+            /* --- ELIMINAR TODO PADDING/MARGIN --- */
+            [data-testid="stAppViewContainer"] > .main > div:first-child {{
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                margin-top: 0px !important;
+                margin-bottom: 0px !important;
+            }}
+            
+            /* Sin espacio antes de los gráficos */
+            .series-temporales-section {{
+                padding-top: 0px !important;
+                margin-top: 0px !important;
+            }}
+            
+            /* Eliminar padding del contenedor principal */
+            .main .block-container {{
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+            }}
             </style>
             <img id="bg-microalgas" src="data:image/webp;base64,{img_b64}">
-        """, unsafe_allow_html=True)
-    
-    # CSS para hacer que la sección superior ocupe toda la pantalla
-    st.markdown("""
-        <style>
-        /* Agregar espacio superior para empujar el contenido hacia abajo */
-        [data-testid="stAppViewContainer"] > .main > div:first-child {
-            padding-top: 15vh !important;
-            padding-bottom: 35vh !important;
-        }
-        
-        /* Asegurar que la sección de gráficos comience en una nueva "página" */
-        .series-temporales-section {
-            padding-top: 10vh;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+        """), unsafe_allow_html=True)
     
     # Header (estático)
     st.markdown("""
-        <div class="main-header">
+        <div class="main-header" style="margin-bottom: 5px; margin-top: 5px;">
             <h1>🌊 Monitoreo en Vivo</h1>
             <p>Visualización en tiempo real de sensores ambientales</p>
         </div>
@@ -89,7 +97,6 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
         apply_metric_styles()
         apply_chart_styles()
         
-        
         # Métricas principales
         col1, col2, col3, col4 = st.columns(4)
         
@@ -108,7 +115,6 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
             )
         
         with col3:
-            # Calcular delta del promedio (comparando con la primera mitad de datos)
             ph_mean_current = df['ph'].mean()
             ph_mean_previous = df['ph'].iloc[:len(df)//2].mean() if len(df) > 2 else ph_mean_current
             ph_delta = ph_mean_current - ph_mean_previous
@@ -120,7 +126,6 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
             )
         
         with col4:
-            # Calcular delta del promedio (comparando con la primera mitad de datos)
             temp_mean_current = df['temperatura'].mean()
             temp_mean_previous = df['temperatura'].iloc[:len(df)//2].mean() if len(df) > 2 else temp_mean_current
             temp_delta = temp_mean_current - temp_mean_previous
@@ -131,14 +136,14 @@ def render_monitoreo_vivo(df_inicial, rango_horas):
                 delta=f"{temp_delta:.1f}°C" if len(df) > 2 else None
             )
         
-        # Separador después de métricas
-        st.markdown("<hr style='border: 2px solid white; margin: 2rem 0;'>", unsafe_allow_html=True)
+        # Separador ultra compacto
+        st.markdown("<hr style='border: 1px solid rgba(255,255,255,0.3); margin: 5px 0;'>", unsafe_allow_html=True)
         
-        # Gráficos de series temporales (últimos 5 minutos)
+        # Gráficos de series temporales
         st.markdown("""
             <div class="series-temporales-section">
-                <h2 style='color: white; font-size: 2rem; margin-bottom: 1rem;'>
-                    Series Temporales (Últimos 5 Minutos)
+                <h2 style='color: white; font-size: 1.8rem; margin-bottom: 1rem;'>
+                    Series Temporales en vivo - Últimos 5 minutos
                 </h2>
             </div>
         """, unsafe_allow_html=True)

@@ -235,10 +235,12 @@ def apply_chart_styles():
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border-radius: 15px;
-            padding: 15px;
+            padding: 20px 15px 30px 15px;  /* Más padding inferior para el eje X */
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
             margin-top: 20px;
+            margin-bottom: 20px;
+            overflow: visible !important;  /* Evitar recorte del contenido */
         }
         </style>
     """, unsafe_allow_html=True)
@@ -278,9 +280,9 @@ def apply_analisis_styles():
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
         
-        /* Nombre del sensor a la izquierda y en color */
+        /* Nombre del sensor centrado y en color */
         .styled-table tbody td:first-child {
-            text-align: left;
+            text-align: center;
             font-weight: bold;
             color: #00d4ff;
         }
