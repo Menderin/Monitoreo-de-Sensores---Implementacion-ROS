@@ -8,7 +8,7 @@ import time
 
 # Importar módulos propios
 from config import Settings
-from styles import apply_custom_styles
+from styles import apply_custom_styles, apply_tab_styles
 from database import MongoHandler
 from components import render_sidebar
 from pages import (
@@ -39,6 +39,9 @@ def main():
     
     # Recargar datos con el rango seleccionado
     df = MongoHandler.cargar_datos(horas=rango_horas)
+
+    # Aplicar estilos de pestañas
+    apply_tab_styles()
     
     if not df.empty:
         # Crear pestañas de navegación
@@ -49,9 +52,10 @@ def main():
             "DISPOSITIVOS"
         ])
         
+        
         # Renderizar cada pestaña
         with tab1:
-            render_monitoreo_vivo(df)
+            render_monitoreo_vivo(df, rango_horas)
         
         with tab2:
             render_analisis_estadistico(df)
@@ -61,11 +65,6 @@ def main():
         
         with tab4:
             render_dispositivos(df)
-        
-        # Auto-refresh si está activado
-        if auto_refresh:
-            time.sleep(Settings.AUTO_REFRESH_INTERVAL)
-            st.rerun()
     
     else:
         st.warning("No hay datos disponibles para el rango temporal seleccionado")

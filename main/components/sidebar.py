@@ -28,12 +28,10 @@ def render_sidebar(df):
         MongoHandler.limpiar_cache()
         st.rerun()
     
-    st.sidebar.markdown("---")
     
-    # Auto-refresh
-    auto_refresh = st.sidebar.checkbox("Auto-actualización (60s)", value=False)
-    if auto_refresh:
-        st.sidebar.info("Actualizando automáticamente cada 60 segundos...")
+    # Auto-refresh siempre activo
+    st.sidebar.info("🔄 Actualizando automáticamente cada 10 segundos...")
+    auto_refresh = True
     
     st.sidebar.markdown("---")
     

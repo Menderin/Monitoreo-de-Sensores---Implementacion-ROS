@@ -18,10 +18,10 @@ def render_registros(df):
         )
     
     # Preparar datos para tabla
-    df_display = df[['timestamp', 'ph', 'temperatura']].copy()
+    df_display = df[['timestamp', 'dispositivo_id', 'temperatura', 'ph']].copy()
     df_display['timestamp'] = df_display['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
     df_display = df_display.sort_values('timestamp', ascending=False)
-    df_display.columns = ['Fecha y Hora', 'pH', 'Temperatura (°C)']
+    df_display.columns = ['Fecha y Hora', 'Dispositivo', 'Temperatura (°C)', 'pH']
     
     # Mostrar según selección
     if mostrar_registros == "Todos":

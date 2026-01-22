@@ -29,6 +29,10 @@ def crear_grafico_lineas(df, columna, titulo, color_key, yaxis_title):
         fillcolor=f'rgba{tuple(list(int(COLORS[color_key][i:i+2], 16) for i in (1, 3, 5)) + [0.2])}'
     ))
     
+    # Calcular rango dinámico del eje Y
+    y_min = df[columna].min() - 0.5
+    y_max = df[columna].max() + 0.5
+    
     fig.update_layout(
         title=dict(
             text=titulo,
@@ -41,9 +45,20 @@ def crear_grafico_lineas(df, columna, titulo, color_key, yaxis_title):
         height=400,
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white', size=12),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+        font=dict(color='white', size=12), # Tamaño base
+        xaxis=dict(
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white', size=16), # <--- Título del eje más grande
+            tickfont=dict(color='white', size=14),   # <--- Números del eje más grandes
+            dtick=60000,                             # <--- Forzar intervalo de 1 minuto (60,000 ms)
+            tickformat="%H:%M:%S"                    # (Opcional) Formato de hora limpio
+        ),
+        yaxis=dict(
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white', size=16), # <--- Título del eje más grande
+            tickfont=dict(color='white', size=14),   # <--- Números del eje más grandes
+            range=[y_min, y_max]
+        ),
         hovermode='x unified'
     )
     
@@ -77,7 +92,12 @@ def crear_grafico_caja(df, columna, titulo, color_key, yaxis_title):
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white'),
-        yaxis=dict(title=yaxis_title, gridcolor='rgba(255,255,255,0.1)'),
+        yaxis=dict(
+            title=yaxis_title,
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white'),
+            tickfont=dict(color='white')
+        ),
         showlegend=False
     )
     

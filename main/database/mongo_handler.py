@@ -45,7 +45,7 @@ class MongoHandler:
             
             # Consulta a MongoDB
             query = {
-                'timestamp': {'$gte': tiempo_limite.isoformat()}
+                'timestamp': {'$gte': tiempo_limite}
             }
             
             datos = list(collection.find(query).sort('timestamp', 1))
@@ -57,15 +57,30 @@ class MongoHandler:
             registros = []
             for registro in datos:
                 try:
-                    registros.append({
-                        'timestamp': pd.to_datetime(registro.get('timestamp')),
-                        'ph': registro.get('ph', {}).get('valor'),
-                        'temperatura': registro.get('temperatura', {}).get('valor')
-                    })
+                    # Extraer valores del nuevo esquema
+                    temp = registro.get('datos', {}).get('temperatura')
+                    ph = registro.get('datos', {}).get('ph')
+                    
+                    # Solo agregar si ambos valores existen
+                    if temp is not None and ph is not None:
+                        # Convertir timestamp de UTC a hora de Chile (UTC-3)
+                        timestamp_utc = pd.to_datetime(registro.get('timestamp'))
+                        timestamp_chile = timestamp_utc.tz_localize('UTC').tz_convert('America/Santiago')
+                        
+                        registros.append({
+                            'timestamp': timestamp_chile,
+                            'dispositivo_id': registro.get('dispositivo_id', 'unknown'),
+                            'temperatura': temp,
+                            'ph': ph
+                        })
                 except:
                     continue
             
             df = pd.DataFrame(registros)
+            
+            if df.empty:
+                return df
+            
             df = df.sort_values('timestamp').reset_index(drop=True)
             
             return df
