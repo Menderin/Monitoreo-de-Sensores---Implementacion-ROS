@@ -39,10 +39,6 @@ static const char *TAG = "ROS_PUBLISHER";
     } \
 }
 
-// ========================================
-// VARIABLES PRIVADAS
-// ========================================
-
 static rclc_support_t support;
 static rcl_allocator_t allocator;
 static rcl_node_t node;

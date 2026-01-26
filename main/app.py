@@ -64,7 +64,7 @@ def main():
             render_registros(df)
         
         with tab4:
-            render_dispositivos(df)
+            render_dispositivos()
     
     else:
         st.warning("No hay datos disponibles para el rango temporal seleccionado")
