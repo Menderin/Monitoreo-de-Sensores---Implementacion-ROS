@@ -23,7 +23,7 @@
 // ========================================
 
 // Temperatura: conversión de voltaje a grados Celsius
-#define TEMP_OFFSET_CAL     -1.5
+#define TEMP_OFFSET_CAL     -0.7
 
 // pH: conversiones anteriores (comentadas para historial)
 // v1: slope=0.00375, intercept=0.58
@@ -58,5 +58,32 @@
 #define TOPIC_TEMPERATURE       "temperatura"
 #define TOPIC_PH                "ph"
 #define TOPIC_VOLTAGE_RAW_PH    "voltage_raw_ph"
+#define TOPIC_MOTOR_CMD         "motor_commands"
+
+// ========================================
+// CONFIGURACIÓN DE MOTOR DC - Driver MINI 298
+// ========================================
+
+// Pines GPIO para driver MINI 298 (con PWM directo en IN1/IN2)
+#define MOTOR_IN1_PIN    GPIO_NUM_25  // PWM dirección izquierda
+#define MOTOR_IN2_PIN    GPIO_NUM_26  // PWM dirección derecha
+
+// Configuración PWM para control de velocidad
+#define MOTOR_PWM_FREQ       1000           // 1 KHz
+#define MOTOR_PWM_TIMER      LEDC_TIMER_0
+#define MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
+#define MOTOR_PWM_RESOLUTION LEDC_TIMER_8_BIT  // 0-255
+
+// Canales PWM (uno para cada pin)
+#define MOTOR_IN1_CHANNEL    LEDC_CHANNEL_0
+#define MOTOR_IN2_CHANNEL    LEDC_CHANNEL_1
+
+// Niveles de velocidad (duty cycle)
+#define MOTOR_SPEED_SLOW     102  // 40% (~40% velocidad)
+#define MOTOR_SPEED_MEDIUM   178  // 70% (~70% velocidad)
+#define MOTOR_SPEED_FAST     255  // 100% (velocidad máxima)
+
+// Velocidad por defecto
+#define MOTOR_SPEED_DEFAULT  MOTOR_SPEED_FAST
 
 #endif // CONFIG_H

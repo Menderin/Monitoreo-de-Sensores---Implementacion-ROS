@@ -1,11 +1,16 @@
 /**
  * @file ros_publisher.c
- * @brief Implementación del publicador micro-ROS
+ * @brief Implementación del publicador y suscriptor micro-ROS (híbrido)
  */
 
 #include "../include/ros_publisher.h"
+#include "../include/motor_controller.h"
 #include "../include/config.h"
 #include "../wifi_config.h"
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>  // Para atoi()
 
 #include "esp_log.h"
 #include "esp_system.h"
@@ -15,8 +20,10 @@
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h>
 #include <rclc/rclc.h>
+#include <rclc/executor.h>
 #include <std_msgs/msg/float32.h>
 #include <std_msgs/msg/float32_multi_array.h>
+#include <std_msgs/msg/string.h>
 #include <rmw_microros/rmw_microros.h>
 
 static const char *TAG = "ROS_PUBLISHER";
@@ -46,6 +53,14 @@ static rcl_node_t node;
 // Publicador único con array de floats
 static rcl_publisher_t sensor_data_publisher;
 static std_msgs__msg__Float32MultiArray sensor_data_msg;
+
+// Suscriptor para comandos de motor
+static rcl_subscription_t motor_cmd_subscriber;
+static std_msgs__msg__String motor_cmd_msg;
+static char motor_cmd_buffer[16];  // Buffer estático para el string
+
+// Executor para manejar callbacks
+static rclc_executor_t executor;
 
 // Optimización: Buffers estáticos preallocados (no fragmentan HEAP)
 static float sensor_data_array[5];  // [temp, pH, voltage, mac_part1, mac_part2]
@@ -77,6 +92,64 @@ static void get_device_mac_floats(float *mac_part1, float *mac_part2) {
     
     *mac_part1 = (float)part1;
     *mac_part2 = (float)part2;
+}
+
+// ========================================
+// CALLBACKS
+// ========================================
+
+static void motor_cmd_callback(const void *msgin)
+{
+    const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msgin;
+    
+    if (msg->data.data == NULL || msg->data.size == 0) {
+        ESP_LOGW(TAG, "Comando de motor vacío recibido");
+        return;
+    }
+    
+    ESP_LOGI(TAG, "📩 Comando recibido: '%s'", msg->data.data);
+    
+    // Obtener velocidad actual configurada
+    uint8_t speed = motor_get_speed();
+    
+    // Comparar comando y ejecutar acción
+    if (strcmp(msg->data.data, "LEFT") == 0) {
+        motor_move_left(speed);
+    }
+    else if (strcmp(msg->data.data, "RIGHT") == 0) {
+        motor_move_right(speed);
+    }
+    else if (strcmp(msg->data.data, "STOP") == 0) {
+        motor_stop();
+    }
+    // Comando de velocidad con formato SPEED_SET_XX (donde XX es porcentaje 0-100)
+    else if (strncmp(msg->data.data, "SPEED_SET_", 10) == 0) {
+        // Parsear porcentaje después de "SPEED_SET_"
+        int percent = atoi(msg->data.data + 10);
+        
+        // Validar rango
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+        
+        // Convertir porcentaje a duty cycle (0-255)
+        uint8_t duty = (uint8_t)((percent * 255) / 100);
+        
+        motor_set_speed(duty);
+        ESP_LOGI(TAG, "🎚️  Velocidad configurada: %d%% (duty=%d/255)", percent, duty);
+    }
+    // Comandos de velocidad legacy (compatibilidad)
+    else if (strcmp(msg->data.data, "SPEED_SLOW") == 0) {
+        motor_set_speed(MOTOR_SPEED_SLOW);
+    }
+    else if (strcmp(msg->data.data, "SPEED_MEDIUM") == 0) {
+        motor_set_speed(MOTOR_SPEED_MEDIUM);
+    }
+    else if (strcmp(msg->data.data, "SPEED_FAST") == 0) {
+        motor_set_speed(MOTOR_SPEED_FAST);
+    }
+    else {
+        ESP_LOGW(TAG, "Comando desconocido: '%s'", msg->data.data);
+    }
 }
 
 // ========================================
@@ -165,8 +238,35 @@ bool ros_publisher_init(void)
     sensor_data_msg.layout.dim.capacity = 0;
     sensor_data_msg.layout.data_offset = 0;
     
+    ESP_LOGI(TAG, "HEAP libre antes de crear subscriber: %lu bytes", esp_get_free_heap_size());
+    
+    // Crear suscriptor para comandos de motor
+    RCCHECK(rclc_subscription_init_default(
+        &motor_cmd_subscriber,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+        TOPIC_MOTOR_CMD));
+    ESP_LOGI(TAG, "Suscriptor creado: '/%s' (String)", TOPIC_MOTOR_CMD);
+    
+    // Inicializar buffer del mensaje
+    motor_cmd_msg.data.data = motor_cmd_buffer;
+    motor_cmd_msg.data.capacity = sizeof(motor_cmd_buffer);
+    motor_cmd_msg.data.size = 0;
+    
+    // Crear executor con 1 handle (el subscriber)
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+    RCCHECK(rclc_executor_add_subscription(
+        &executor,
+        &motor_cmd_subscriber,
+        &motor_cmd_msg,
+        &motor_cmd_callback,
+        ON_NEW_DATA));
+    ESP_LOGI(TAG, "Executor creado con 1 subscription");
+    
+    ESP_LOGI(TAG, "HEAP libre después de subscriber: %lu bytes", esp_get_free_heap_size());
+    
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  SISTEMA ROS LISTO PARA PUBLICAR");
+    ESP_LOGI(TAG, "  SISTEMA ROS LISTO (PUBLISHER + SUBSCRIBER)");
     ESP_LOGI(TAG, "========================================");
     
     initialized = true;
@@ -206,17 +306,39 @@ bool ros_publisher_publish(const sensor_data_t *data)
     return true;
 }
 
+bool ros_executor_spin_some(uint64_t timeout_ns)
+{
+    if (!initialized) {
+        return false;
+    }
+    
+    // Procesar callbacks pendientes (non-blocking)
+    rcl_ret_t ret = rclc_executor_spin_some(&executor, timeout_ns);
+    if (ret != RCL_RET_OK && ret != RCL_RET_TIMEOUT) {
+        ESP_LOGW(TAG, "Executor spin returned: %d", (int)ret);
+        return false;
+    }
+    
+    return true;
+}
+
 void ros_publisher_deinit(void)
 {
     if (!initialized) {
         return;
     }
     
+    // Limpiar executor
+    rclc_executor_fini(&executor);
+    
+    // Limpiar suscriptor
+    RCSOFTCHECK(rcl_subscription_fini(&motor_cmd_subscriber, &node));
+    
     // Limpiar publicador
-    rcl_publisher_fini(&sensor_data_publisher, &node);
+    RCSOFTCHECK(rcl_publisher_fini(&sensor_data_publisher, &node));
     
     // Limpiar nodo
-    rcl_node_fini(&node);
+    RCSOFTCHECK(rcl_node_fini(&node));
     
     // Limpiar soporte
     rclc_support_fini(&support);
