@@ -33,7 +33,7 @@ services:
       udp4 --port 8888 -v4
     restart: unless-stopped
     env_file:
-      - .env
+      - database/.env
     environment:
       RMW_IMPLEMENTATION: rmw_fastrtps_cpp
       # Perfil XML que desactiva multicast y usa unicast entre contenedores

@@ -30,6 +30,8 @@ services:
     restart: unless-stopped
     env_file:
       - database/.env
+    environment:
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     logging:
       driver: "json-file"
       options:
@@ -50,6 +52,8 @@ services:
     restart: unless-stopped
     env_file:
       - database/.env
+    environment:
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     volumes:
       # Monta el código Python en vivo — cambios se aplican sin rebuild.
       # Solo reiniciar el contenedor: docker compose restart ros_node
