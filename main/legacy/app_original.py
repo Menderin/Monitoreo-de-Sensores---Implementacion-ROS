@@ -190,7 +190,7 @@ rango_horas = st.sidebar.selectbox(
 )
 
 # Botón de actualización
-if st.sidebar.button("↻ Actualizar Datos", type="primary"):
+if st.sidebar.button(" Actualizar Datos", type="primary"):
     st.cache_data.clear()
     st.rerun()
 
@@ -565,7 +565,7 @@ if not df.empty:
                 st.metric("Desv. Est.", f"{df['ph'].std():.2f}")
         
         with col_stat2:
-            st.markdown("#### 🌡️ Distribución de Temperatura")
+            st.markdown("#### 🌡 Distribución de Temperatura")
             fig_hist_temp = go.Figure()
             
             fig_hist_temp.add_trace(go.Histogram(
@@ -669,7 +669,7 @@ if not df.empty:
         # Botón de descarga
         csv = df_display.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="⬇️ Descargar CSV",
+            label="⬇ Descargar CSV",
             data=csv,
             file_name=f'datos_sensores_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
             mime='text/csv',
@@ -687,19 +687,19 @@ if not df.empty:
             **Modelo:** Sensor pH Analógico  
             **Rango:** 0 - 14 pH  
             **Precisión:** ±0.1 pH  
-            **Estado:** ✅ Operativo
+            **Estado:**  Operativo
             """)
             
             st.metric("Última Lectura", f"{df['ph'].iloc[-1]:.2f} pH")
             st.metric("Total de Lecturas", len(df))
             
         with col_dev2:
-            st.markdown("#### 🌡️ Sensor de Temperatura")
+            st.markdown("#### 🌡 Sensor de Temperatura")
             st.info("""
             **Modelo:** DHT22 / DS18B20  
             **Rango:** -40°C a 80°C  
             **Precisión:** ±0.5°C  
-            **Estado:** ✅ Operativo
+            **Estado:**  Operativo
             """)
             
             st.metric("Última Lectura", f"{df['temperatura'].iloc[-1]:.1f}°C")
@@ -715,10 +715,10 @@ if not df.empty:
         with col_info2:
             st.metric("Colección", os.getenv('MONGO_COLLECTION'))
         with col_info3:
-            st.metric("Estado Conexión", "✅ Conectado")
+            st.metric("Estado Conexión", " Conectado")
     
 else:
-    st.warning("⚠️ No hay datos disponibles para el rango temporal seleccionado")
+    st.warning(" No hay datos disponibles para el rango temporal seleccionado")
     st.info(f"Intentando conectar a: {os.getenv('MONGO_DB')}/{os.getenv('MONGO_COLLECTION')}")
 
 # Auto-refresh automático

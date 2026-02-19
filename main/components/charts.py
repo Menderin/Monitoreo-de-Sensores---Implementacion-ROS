@@ -29,6 +29,10 @@ def crear_grafico_lineas(df, columna, titulo, color_key, yaxis_title):
         fillcolor=f'rgba{tuple(list(int(COLORS[color_key][i:i+2], 16) for i in (1, 3, 5)) + [0.2])}'
     ))
     
+    # Calcular rango dinámico del eje Y
+    y_min = df[columna].min() - 0.5
+    y_max = df[columna].max() + 0.5
+    
     fig.update_layout(
         title=dict(
             text=titulo,
@@ -38,12 +42,26 @@ def crear_grafico_lineas(df, columna, titulo, color_key, yaxis_title):
         ),
         xaxis_title="Tiempo",
         yaxis_title=yaxis_title,
-        height=400,
+        height=350,  # Reducido para minimizar scroll innecesario
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white', size=12),
-        xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+        margin=dict(b=100, t=80, l=60, r=40),  # Margen inferior aumentado a 100px
+        xaxis=dict(
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white', size=16),
+            tickfont=dict(color='white', size=14),
+            dtick=60000,  # Intervalo de 1 minuto
+            tickformat="%H:%M:%S",
+            showticklabels=True,  # Asegurar que los labels están visibles
+            side='bottom'  # Forzar que el eje esté en la parte inferior
+        ),
+        yaxis=dict(
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white', size=16),
+            tickfont=dict(color='white', size=14),
+            range=[y_min, y_max]
+        ),
         hovermode='x unified'
     )
     
@@ -77,7 +95,12 @@ def crear_grafico_caja(df, columna, titulo, color_key, yaxis_title):
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='white'),
-        yaxis=dict(title=yaxis_title, gridcolor='rgba(255,255,255,0.1)'),
+        yaxis=dict(
+            title=yaxis_title,
+            gridcolor='rgba(255,255,255,0.1)',
+            title_font=dict(color='white'),
+            tickfont=dict(color='white')
+        ),
         showlegend=False
     )
     

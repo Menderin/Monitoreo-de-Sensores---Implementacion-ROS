@@ -12,9 +12,10 @@ import json
 import os
 from pathlib import Path
 
-# Cargar variables de entorno desde archivo .env
+# Cargar variables de entorno desde archivo .env centralizado
 from dotenv import load_dotenv
-load_dotenv()
+db_env_path = Path(__file__).parent.parent.parent.parent / 'database' / '.env'
+load_dotenv(db_env_path)
 
 # Descomentar cuando instales pymongo
 from pymongo import MongoClient

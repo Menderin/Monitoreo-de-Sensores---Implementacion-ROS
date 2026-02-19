@@ -13,37 +13,35 @@ def render_sidebar(df):
     Returns:
         Tuple (rango_horas, auto_refresh)
     """
-    st.sidebar.markdown("### 🎛️ Panel de Control")
+    st.sidebar.markdown("### Panel de Control")
     
     # Selector de rango temporal
     rango_horas = st.sidebar.selectbox(
-        "⏰ Rango Temporal",
+        "Rango Temporal",
         options=Settings.RANGO_HORAS_OPTIONS,
         index=0,
         format_func=lambda x: f"Última{'s' if x > 1 else ''} {x} hora{'s' if x > 1 else ''}"
     )
     
     # Botón de actualización
-    if st.sidebar.button("↻ Actualizar Datos", type="primary", use_container_width=True):
+    if st.sidebar.button(" Actualizar Datos", type="primary", use_container_width=True):
         MongoHandler.limpiar_cache()
         st.rerun()
     
-    st.sidebar.markdown("---")
     
-    # Auto-refresh
-    auto_refresh = st.sidebar.checkbox("🔄 Auto-actualización (60s)", value=False)
-    if auto_refresh:
-        st.sidebar.info("Actualizando automáticamente cada 60 segundos...")
+    # Auto-refresh siempre activo
+    st.sidebar.info("🔄 Actualizando automáticamente cada 10 segundos...")
+    auto_refresh = True
     
     st.sidebar.markdown("---")
     
     # Información de conexión (si hay datos)
     if not df.empty:
-        st.sidebar.success(f"✅ Conectado a MongoDB")
-        st.sidebar.metric("📊 Registros Cargados", len(df))
-        st.sidebar.metric("🕐 Último Registro", 
+        st.sidebar.success(f"Conectado a MongoDB")
+        st.sidebar.metric("Registros Cargados", len(df))
+        st.sidebar.metric("Último Registro", 
                          df['timestamp'].max().strftime("%H:%M:%S"))
     else:
-        st.sidebar.warning("⚠️ Sin datos disponibles")
+        st.sidebar.warning("Sin datos disponibles")
     
     return rango_horas, auto_refresh

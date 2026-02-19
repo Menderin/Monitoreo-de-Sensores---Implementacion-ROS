@@ -1,8 +1,14 @@
 numpy
 pandas
-streamlit
+streamlit>=1.40.0 #borrar estas versiones si no funcionan
+altair>=6.0.0
 matplotlib
 seaborn
 plotly
 pymongo
 python-dotenv
+PyYAML
+setuptools
+typeguard
+kaleido==0.2.1
+scipy

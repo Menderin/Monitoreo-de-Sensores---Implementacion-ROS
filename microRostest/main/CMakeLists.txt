@@ -67,9 +67,10 @@ message(STATUS "✅ Generado wifi_config.h - SSID: ${WIFI_SSID}, Agent: ${AGENT_
 idf_component_register(
     SRCS 
         "versions/wifi/src/main.c"
-        "versions/wifi/src/sensor_manager.c"
+        "versions/wifi/src/sensor_manager_filtered.c"
         "versions/wifi/src/ros_publisher.c"
         "versions/wifi/src/network_manager.c"
+        "versions/wifi/src/motor_controller.c"
     INCLUDE_DIRS 
         "." 
         "versions/wifi"
@@ -80,7 +81,20 @@ idf_component_register(
         esp_wifi 
         esp_netif 
         nvs_flash
+        driver
 )
+
+# ============================================================================
+# VERIFICACIÓN DE VERSIÓN DEL SENSOR MANAGER
+# ============================================================================
+message(STATUS "")
+message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+message(STATUS "📊 VERSIÓN DE SENSOR MANAGER: FILTRADA (MEDIANA)")
+message(STATUS "   Archivo: sensor_manager_filtered.c")
+message(STATUS "   Filtro: Mediana de 10 muestras")
+message(STATUS "   Beneficios: Elimina outliers y spikes")
+message(STATUS "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+message(STATUS "")
 
 # OPCIÓN B: Versión Serial/UART - Para Agent Serial
 # Descomenta esta y comenta la OPCIÓN A para usar serial

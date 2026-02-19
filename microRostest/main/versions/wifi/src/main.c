@@ -20,6 +20,9 @@
 #include "../include/sensor_manager.h"
 #include "../include/ros_publisher.h"
 #include "../include/network_manager.h"
+#include "../include/motor_controller.h"
+
+#include <rcl/rcl.h>
 
 static const char *TAG = "MAIN";
 
@@ -43,19 +46,30 @@ void micro_ros_task(void *arg)
     ESP_LOGI(TAG, "  Intervalo: %d ms", PUBLISH_INTERVAL_MS);
     ESP_LOGI(TAG, "========================================");
     
-    // Loop principal de publicación
+    // Loop principal: priorizar procesamiento de comandos de motor
     sensor_data_t data;
+    uint32_t last_publish_time = 0;
     
     while (1) {
-        // Leer sensores
-        data.temperature = sensor_read_temperature();
-        data.ph = sensor_read_ph();
+        // CRÍTICO: Procesar comandos de motor frecuentemente (baja latencia)
+        ros_executor_spin_some(RCL_MS_TO_NS(10));  // 10ms timeout
         
-        // Publicar datos
-        ros_publisher_publish(&data);
+        // Publicar sensores solo cada PUBLISH_INTERVAL_MS
+        uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        if (current_time - last_publish_time >= PUBLISH_INTERVAL_MS) {
+            // Leer sensores
+            data.temperature = sensor_read_temperature();
+            data.ph = sensor_read_ph();
+            data.voltage_raw_ph = sensor_read_ph_voltage_raw();
+            
+            // Publicar datos
+            ros_publisher_publish(&data);
+            
+            last_publish_time = current_time;
+        }
         
-        // Esperar antes de la siguiente lectura
-        vTaskDelay(pdMS_TO_TICKS(PUBLISH_INTERVAL_MS));
+        // Espera mínima entre iteraciones (50ms = ~20Hz para motor)
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
     
     // Cleanup (nunca se alcanza en operación normal)
@@ -70,9 +84,9 @@ void micro_ros_task(void *arg)
 void app_main(void)
 {
     ESP_LOGI(TAG, "==============================================");
-    ESP_LOGI(TAG, "   SENSOR CWT-BL (pH + Temperatura)");
+    ESP_LOGI(TAG, "   SENSOR CWT-BL (pH + Temperatura + Motor)");
     ESP_LOGI(TAG, "   ESP32 + WiFi + micro-ROS (UDP)");
-    ESP_LOGI(TAG, "   Arquitectura Modular");
+    ESP_LOGI(TAG, "   Arquitectura Modular con Control de Motor");
     ESP_LOGI(TAG, "==============================================");
     
     // 1. Inicializar conexión WiFi
@@ -95,8 +109,14 @@ void app_main(void)
     ESP_LOGI(TAG, "   Temperatura: %.2f °C", sensor_read_temperature());
     ESP_LOGI(TAG, "   pH: %.2f", sensor_read_ph());
     
+    // 2.5. Inicializar controlador de motor
+    ESP_LOGI(TAG, "Paso 2.5/4: Inicializando controlador de motor...");
+    if (!motor_controller_init()) {
+        ESP_LOGW(TAG, "Advertencia: Motor controller no inicializado. Continuando...");
+    }
+    
     // 3. Iniciar tarea micro-ROS
-    ESP_LOGI(TAG, "Paso 3/3: Iniciando publicador micro-ROS...");
+    ESP_LOGI(TAG, "Paso 3/4: Iniciando publicador micro-ROS...");
     xTaskCreatePinnedToCore(
         micro_ros_task,              // Función
         "micro_ros_task",            // Nombre

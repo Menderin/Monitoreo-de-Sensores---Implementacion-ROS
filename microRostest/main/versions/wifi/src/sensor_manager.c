@@ -140,6 +140,28 @@ float sensor_read_ph(void)
     return voltage_to_ph(voltage_mv);
 }
 
+float sensor_read_ph_voltage_raw(void)
+{
+    int raw, voltage_mv;
+    
+    // Leer valor raw del ADC
+    esp_err_t ret = adc_oneshot_read(adc_handle, ADC_PH_CHANNEL, &raw);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Error al leer pH raw: %s", esp_err_to_name(ret));
+        return 0.0;
+    }
+    
+    // Convertir a voltaje
+    if (adc_cali_handle) {
+        adc_cali_raw_to_voltage(adc_cali_handle, raw, &voltage_mv);
+    } else {
+        // Conversión manual si no hay calibración
+        voltage_mv = raw * 3300 / 4095;
+    }
+    
+    return (float)voltage_mv;
+}
+
 void sensor_manager_deinit(void)
 {
     if (adc_cali_handle) {

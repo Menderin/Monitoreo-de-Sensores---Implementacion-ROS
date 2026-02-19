@@ -84,7 +84,14 @@ Ubuntu 22.04 LTS (o compatible)
 ```bash
 # 1. Clonar repositorio
 git clone https://github.com/Menderin/sensores.git
-cd sensores/microRostest
+cd sensores
+
+# Crear entorno virtual con Conda (Python 3.12)
+conda create -n sensores python=3.12
+conda activate sensores
+pip install -r main/requirements.txt
+
+cd microRostest
 
 # 2. Flashear ESP32 (primera vez)
 cd scripts

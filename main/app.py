@@ -5,10 +5,23 @@ Sistema modular de visualización de datos de sensores
 
 import streamlit as st
 import time
+import os
+from dotenv import load_dotenv
+
+# Configurar variables de entorno antes de importar módulos propios
+# Intentar leer desde Streamlit secrets primero (producción)
+try:
+    os.environ['MONGO_URI'] = st.secrets["MONGO_URI"]
+    os.environ['MONGO_DB'] = st.secrets["MONGO_DB"]
+    os.environ['MONGO_COLLECTION'] = st.secrets["MONGO_COLLECTION"]
+    os.environ['MONGO_COLLECTION_DISPOSITIVOS'] = st.secrets["MONGO_COLLECTION_DISPOSITIVOS"]
+except (KeyError, FileNotFoundError):
+    # Fallback para desarrollo local con .env
+    load_dotenv()
 
 # Importar módulos propios
 from config import Settings
-from styles import apply_custom_styles
+from styles import apply_custom_styles, apply_tab_styles
 from database import MongoHandler
 from components import render_sidebar
 from pages import (
@@ -39,19 +52,23 @@ def main():
     
     # Recargar datos con el rango seleccionado
     df = MongoHandler.cargar_datos(horas=rango_horas)
+
+    # Aplicar estilos de pestañas
+    apply_tab_styles()
     
     if not df.empty:
         # Crear pestañas de navegación
         tab1, tab2, tab3, tab4 = st.tabs([
-            "📊 MONITOREO EN VIVO",
-            "📈 ANÁLISIS ESTADÍSTICO", 
-            "📋 REGISTROS",
-            "🔧 DISPOSITIVOS"
+            "MONITOREO EN VIVO",
+            "ANÁLISIS ESTADÍSTICO", 
+            "REGISTROS",
+            "DISPOSITIVOS"
         ])
+        
         
         # Renderizar cada pestaña
         with tab1:
-            render_monitoreo_vivo(df)
+            render_monitoreo_vivo(df, rango_horas)
         
         with tab2:
             render_analisis_estadistico(df)
@@ -60,15 +77,10 @@ def main():
             render_registros(df)
         
         with tab4:
-            render_dispositivos(df)
-        
-        # Auto-refresh si está activado
-        if auto_refresh:
-            time.sleep(Settings.AUTO_REFRESH_INTERVAL)
-            st.rerun()
+            render_dispositivos()
     
     else:
-        st.warning("⚠️ No hay datos disponibles para el rango temporal seleccionado")
+        st.warning("No hay datos disponibles para el rango temporal seleccionado")
         st.info(f"Intentando conectar a: {Settings.MONGO_DB}/{Settings.MONGO_COLLECTION}")
 
 if __name__ == "__main__":

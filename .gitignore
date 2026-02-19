@@ -21,7 +21,6 @@
 **/*.pfx
 **/serviceAccountKey.json
 **/wifi_config.h
-/resource/
 
 
 # Archivos de configuración con credenciales
@@ -146,76 +145,4 @@ data/db/
 mongo-data/
 dump/
 
-# ============================================
-# 🖥️ SISTEMA OPERATIVO
-# ============================================
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-*.lnk
 
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-
-# Linux
-*~
-.directory
-
-# ============================================
-# 🔧 IDEs y Editores
-# ============================================
-*.swp
-*.swo
-*.swn
-*~
-.vscode/
-.idea/
-*.sublime-project
-*.sublime-workspace
-
-# ============================================
-# 📦 ARCHIVOS TEMPORALES
-# ============================================
-*.tmp
-*.temp
-*.bak
-*.backup
-*.old
-.cache/
-
-# ============================================
-# 🧪 TESTING
-# ============================================
-coverage/
-.nyc_output/
-test-results/
-*.spec.js.snap
-
-# ============================================
-# 🚀 DEPLOYMENT
-# ============================================
-.vercel/
-.netlify/
-.firebase/
-
-# ============================================
-# ROS (Robot Operating System)
-# ============================================
-install/
-log/
-build/
-devel/
-.catkin_workspace
-*.pyc
-
-# ============================================
-# 📝 EXTRAS
-# ============================================
-TODO.local.md
-*.draft
-.scratch/
