@@ -29,10 +29,24 @@
 // v1: slope=0.00375, intercept=0.58
 // v2: slope=0.00356, intercept=1.049 (buffers 4.01, 6.86, 9.18 - ene 19)
 
+/*  Puntos de calibración usados: 3
+     Voltaje (mV)   pH buffer   pH predicho     Error
+  ────────────────────────────────────────────────────────
+           915.00       4.010         3.998   +0.0123
+          1713.00       6.860         6.888   -0.0280
+          2341.50       9.180         9.164   +0.0156
+  ────────────────────────────────────────────────────────
+
+  slope     = 0.003622
+  intercept = 0.683614
+  R²        = 0.999912 */ 
+
 // pH: conversión lineal de mV a pH (calibrado 2026-01-20)
 // Buffers: pH 4.01→878mV, 6.82→1687.5mV, 9.18→2311mV
-#define PH_SLOPE            0.003601
-#define PH_INTERCEPT        0.849
+// pH: calibrado 2026-02-19                                 
+// Buffers: pH 4.01→915mV, pH 6.86→1713mV, pH 9.18→2342mV    
+#define PH_SLOPE       0.003622                              
+#define PH_INTERCEPT   0.683614 
 
 // ========================================
 // CONFIGURACIÓN DE PUBLICACIÓN
