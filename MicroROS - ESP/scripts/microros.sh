@@ -515,10 +515,10 @@ show_menu() {
     echo "    15) Verificar configuración WiFi"
     echo ""
     
-    echo "    ${RED}0)  Salir${NC}"
+    echo -e "    ${RED}0)  Salir${NC}"
     echo ""
     
-    read -p "Selecciona una opción: " option
+    read -rp "Selecciona una opción: " option
     echo ""
     
     case $option in

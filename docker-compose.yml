@@ -1,0 +1,63 @@
+# ==============================================================================
+# docker-compose.yml — Monitor de Microalgas UCN
+# ==============================================================================
+#
+# Servicios:
+#   microros_agent  → micro-ROS Agent UDP/8888 (recibe datos del ESP32)
+#   ros_node        → Nodo ROS 2 que guarda lecturas en MongoDB Atlas
+#
+# Todos usan network_mode: host para que:
+#   · El Agent reciba el UDP del ESP32 sin NAT
+#   · ROS 2 DDS (CycloneDDS) descubra nodos en la red local via multicast
+#
+# Uso rápido:
+#   docker compose up -d
+# ==============================================================================
+
+services:
+
+  # ── 1. micro-ROS Agent ──────────────────────────────────────────────────────
+  microros_agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ros
+    image: microalgas/microros-agent:latest
+    container_name: microros_agent
+    network_mode: host
+    command: >
+      ros2 run micro_ros_agent micro_ros_agent
+      udp4 --port 8888 -v4
+    restart: unless-stopped
+    env_file:
+      - database/.env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── 2. Nodo ROS 2 → MongoDB ─────────────────────────────────────────────────
+  ros_node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ros
+    image: microalgas/microros-agent:latest   # reutiliza la misma imagen
+    container_name: ros_sensor_node
+    network_mode: host
+    command: python3 /app/database/ros_sensor_node.py
+    depends_on:
+      - microros_agent
+    restart: unless-stopped
+    env_file:
+      - database/.env
+    volumes:
+      # Monta el código Python en vivo — cambios se aplican sin rebuild.
+      # Solo reiniciar el contenedor: docker compose restart ros_node
+      - ./database:/app/database:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+

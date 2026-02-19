@@ -8,6 +8,7 @@
 [![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-WiFi%2FUDP-orange.svg)](https://micro.ros.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
 
 **Sistema IoT de monitoreo ambiental: ESP32 + ROS 2 + micro-ROS (WiFi/UDP) + MongoDB**
@@ -28,9 +29,9 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 - 🔧 **Identificación por MAC** — cada ESP32 tiene ID único en la red
 - 🏠 **Control de motor DC** — suscriptor ROS 2 para comandos STOP/LEFT/RIGHT/SPEED
 - ☁️ **MongoDB Atlas** — almacenamiento automático con timestamps
-- 📈 **Dashboard Streamlit** — visualización en tiempo real con autenticación
-- 🧪 **Herramienta de calibración pH** — captura medianas y calcula regresión lineal con numpy
-- 📡 **Filtrado de ruido ADC** — mediana de 10 muestras por lectura
+- 📈 **Dashboard Streamlit** — desplegado en Streamlit Cloud
+- 🐳 **Stack del PC en Docker** — micro-ROS Agent + nodo ROS desplegables con un comando
+- 🎛️ **Menú unificado** — `menu.sh` como punto de entrada para instalar, configurar y operar
 
 ---
 
@@ -50,27 +51,31 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 │  [0]=temp [1]=pH [2]=voltage_raw [3]=mac1 [4]=mac2                  │
 │                                                                      │
 │  GPIO25/26 ──► Motor DC (LEDC PWM)  ◄── /motor_commands (String)    │
-└─────────────────────────── WiFi/UDP ────────────────────────────────┘
+└─────────────────────── WiFi/UDP ────────────────────────────────────┘
                                   │
-                    ┌─────────────▼──────────────┐
-                    │    micro-ROS Agent (PC)     │
-                    │  UDP port 8888              │
-                    └─────────────┬──────────────┘
-                                  │ DDS
-                    ┌─────────────▼──────────────┐
-                    │      ROS 2 Jazzy (PC)       │
-                    │                             │
-                    │  ros_sensor_node.py         │
-                    │  ├── Parsea Float32MultiArray│
-                    │  ├── Identifica ESP32 por MAC│
-                    │  └── Guarda en MongoDB Atlas │
-                    └─────────────┬──────────────┘
+              ┌───────────────────▼────────────────────┐
+              │         PC — Docker Compose             │
+              │  ┌──────────────────────────────────┐  │
+              │  │  microros_agent (network_mode:host)│  │
+              │  │  micro-ROS Agent UDP/8888          │  │
+              │  └──────────────┬───────────────────┘  │
+              │                 │ DDS (FastRTPS)        │
+              │  ┌──────────────▼───────────────────┐  │
+              │  │  ros_node (network_mode:host)     │  │
+              │  │  ros_sensor_node.py               │  │
+              │  │  ├── Parsea Float32MultiArray     │  │
+              │  │  ├── Identifica ESP32 por MAC     │  │
+              │  │  └── Guarda en MongoDB Atlas      │  │
+              │  └──────────────────────────────────┘  │
+              └────────────────────────────────────────┘
                                   │
-                    ┌─────────────▼──────────────┐
-                    │    Dashboard Streamlit      │
-                    │    (visualización + auth)   │
-                    └────────────────────────────┘
+              ┌───────────────────▼────────────────────┐
+              │    Dashboard Streamlit Cloud            │
+              │    (visualización + autenticación)      │
+              └────────────────────────────────────────┘
 ```
+
+> **`network_mode: host`** en todos los servicios Docker: necesario para que el Agent reciba UDP del ESP32 sin NAT y para que ROS 2 DDS descubra nodos via multicast.
 
 ### Topics ROS 2
 
@@ -78,16 +83,6 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 |---|---|---|---|
 | `/sensor_data` | `Float32MultiArray` | ESP32 → PC | Todos los datos del sensor + MAC |
 | `/motor_commands` | `String` | PC → ESP32 | Comandos: LEFT, RIGHT, STOP, SPEED_SET_XX |
-
-### Formato del mensaje `/sensor_data`
-
-```
-data[0] = temperatura (°C)
-data[1] = pH (calibrado)
-data[2] = voltage_raw_ph (mV)   ← usado para recalibración
-data[3] = MAC[0:2] como float   ← identificador único ESP32
-data[4] = MAC[3:5] como float
-```
 
 ---
 
@@ -122,139 +117,171 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
 
 ---
 
-## 🛠️ Instalación
+## 🛠️ Instalación en una PC nueva
 
-### 1. Prerrequisitos del sistema
+### Opción A — Instalación automática (recomendada)
+
+1. Clona el repositorio:
+   ```bash
+   git clone https://github.com/Menderin/Monitoreo-de-Sensores---Implementacion-ROS.git
+   cd Monitoreo-de-Sensores---Implementacion-ROS
+   ```
+
+2. Lanza el menú principal:
+   ```bash
+   chmod +x menu.sh && ./menu.sh
+   ```
+
+3. Selecciona **opción 1 → Instalar sistema**. El script `install.sh` se encarga de:
+   - Detectar si es Ubuntu nativo, WSL2 nativo o WSL2 + Docker Desktop
+   - Instalar Docker Engine + Docker Compose plugin
+   - Configurar `database/.env` (credenciales MongoDB)
+   - Construir las imágenes Docker y levantar los servicios
+
+4. Configura las credenciales desde el propio menú (**opción 3**) antes de continuar.
+
+> **Windows:** el script detecta automáticamente WSL2 + Docker Desktop y usa
+> `docker-compose.windows.yml` (bridge network + unicast DDS) en lugar del compose
+> principal. Ver sección [Windows / WSL2](#-windows--wsl2) para detalles.
+
+---
+
+### Opción B — Instalación manual paso a paso
+
+#### 1. Instalar Docker
 
 ```bash
-# Ubuntu 24.04 LTS recomendado
-# Python 3.12 (del sistema, NO usar conda/venv para ROS/ESP-IDF)
+sudo apt-get update && sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker $USER  # cerrar sesión para aplicar
 ```
 
-### 2. Instalar ROS 2 Jazzy
+#### 2. Configurar credenciales MongoDB
 
 ```bash
-# Configurar repositorios
-sudo apt install -y software-properties-common curl
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-     -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-     http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
-     | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
-
-# Instalar
-sudo apt update && sudo apt install -y ros-jazzy-desktop
-
-# Activar en sesión
-source /opt/ros/jazzy/setup.bash
+cp .env.example database/.env
+nano database/.env
+# Rellenar: MONGO_URI, MONGO_DB, MONGO_COLLECTION
 ```
 
-### 3. Instalar micro-ROS Agent
+#### 3. Configurar WiFi del ESP32
 
 ```bash
-mkdir -p ~/microros_ws/src && cd ~/microros_ws/src
-git clone -b jazzy https://github.com/micro-ROS/micro_ros_msgs.git
-git clone -b jazzy https://github.com/micro-ROS/micro-ROS-Agent.git
-
-cd ~/microros_ws
-source /opt/ros/jazzy/setup.bash
-colcon build
-source install/setup.bash
+cp "MicroROS - ESP/main/versions/wifi/.env.example" "MicroROS - ESP/main/versions/wifi/.env"
+nano "MicroROS - ESP/main/versions/wifi/.env"
+# Rellenar: WIFI_SSID, WIFI_PASSWORD, AGENT_IP (IP del PC), AGENT_PORT=8888
 ```
 
-### 4. Instalar ESP-IDF 5.5.2
+#### 4. Construir e iniciar servicios
 
 ```bash
-mkdir -p ~/esp && cd ~/esp
-git clone -b v5.5.2 --recursive https://github.com/espressif/esp-idf.git v5.5.2/esp-idf
-cd v5.5.2/esp-idf
-./install.sh esp32
+# Linux / WSL2 nativo
+docker compose up -d
 
-# Activar entorno (siempre antes de compilar)
-# ⚠️ IMPORTANTE: desactivar conda/venv antes de hacer esto
-conda deactivate  # si usás conda
-source ~/esp/v5.5.2/esp-idf/export.sh
-```
+# WSL2 + Docker Desktop (Windows)
+docker compose -f docker-compose.windows.yml up -d
 
-> **⚠️ Conflicto de Python:** ESP-IDF 5.5.2 requiere **Python 3.12**. Si tenés Miniconda/Anaconda activo, el `python3` del sistema queda oculto por Python 3.13+ de conda. Siempre ejecutar `conda deactivate` antes de `source export.sh`.
-
-### 5. Clonar y configurar proyecto
-
-```bash
-git clone https://github.com/Menderin/sensores.git
-cd sensores/microRostest
-```
-
-### 6. Configurar credenciales WiFi
-
-```bash
-cd scripts
-./microros.sh edit-env   # Opción 12 del menú
-# Completar: WIFI_SSID, WIFI_PASSWORD, AGENT_IP, AGENT_PORT
-./microros.sh gen-wifi   # Genera wifi_config.h
-```
-
-### 7. Compilar y flashear ESP32
-
-```bash
-# ⚠️ Desactivar conda antes
-conda deactivate && conda deactivate
-
-cd microRostest/scripts
-./microros.sh all        # Build + Flash + Monitor (opción 2)
-```
-
-### 8. Instalar dependencias Python (dashboard + nodo ROS)
-
-```bash
-cd sensores
-pip install -r database/requirements.txt
-# o
-pip install pymongo python-dotenv streamlit numpy pandas matplotlib
+docker compose ps  # verificar que ambos servicios estén Running
 ```
 
 ---
 
-## 🚀 Uso del Sistema
+## 🪟 Windows / WSL2
 
-### Iniciar el stack completo (3 terminales)
+`network_mode: host` no funciona en Docker Desktop (corre dentro de una VM Hyper-V).
+Para Windows se incluye un compose alternativo que usa bridge network:
 
-**Terminal 1 — micro-ROS Agent (WiFi/UDP)**
+| Plataforma | Compose a usar | Soporte |
+|---|---|---|
+| Ubuntu nativo | `docker-compose.yml` | ✅ Completo |
+| WSL2 + Docker nativo | `docker-compose.yml` | ✅ Completo |
+| WSL2 + Docker Desktop | `docker-compose.windows.yml` | ✅ Con limitaciones |
+| Docker Desktop (sin WSL2) | — | ❌ No soportado |
+
+**`docker-compose.windows.yml` diferencias:**
+- Bridge network `ros_net` en lugar de `network_mode: host`
+- Puerto `8888:8888/udp` mapeado al host Windows
+- `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` (FastRTPS en vez de CycloneDDS)
+- `config/fastrtps_bridge.xml` — desactiva multicast DDS y usa unicast entre contenedores
+
+**AGENT_IP para el ESP32 en WSL2:**
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/microros_ws/install/setup.bash
-ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+ip addr show eth0   # dentro de WSL2 — usar esta IP, NO la de Windows
 ```
 
-**Terminal 2 — Nodo ROS → MongoDB**
-```bash
-source /opt/ros/jazzy/setup.bash
-cd sensores/database
-python3 ros_sensor_node.py
+**Firewall Windows** (PowerShell como administrador):
+```powershell
+New-NetFirewallRule -DisplayName 'microROS UDP' -Direction Inbound -Protocol UDP -LocalPort 8888 -Action Allow
 ```
 
-**Terminal 3 — Dashboard Streamlit**
-```bash
-cd sensores/database
-streamlit run monitoreo_vivo.py
+---
+
+## 🎛️ Menú principal — `menu.sh`
+
+Punto de entrada único para gestionar todo el sistema:
+
+```
+./menu.sh
 ```
 
-Con el script unificado (alternativa):
+| Opción | Acción |
+|---|---|
+| **1** | Instalar sistema (Docker + dependencias + build + up) |
+| **2** | Acciones ESP32 (compilar, flashear, monitor, Agent serial/UDP) |
+| **3** | Configurar credenciales (MongoDB `database/.env` y WiFi `.env`) |
+| **4** | Iniciar nodo de sensores localmente (`ros_sensor_node.py`) |
+| **5** | Iniciar nodo de motores localmente (`motor_control_node.py`) |
+| **6** | Gestionar servicios Docker (iniciar, detener, reiniciar, logs, rebuild) |
+| **7** | Salir |
+
+> **Opciones 4 y 5:** ejecutan los nodos ROS 2 directamente en el host (sin Docker). El menú limpia automáticamente el entorno conda si está activo, crea un `.venv/` con `--system-site-packages` e instala `pymongo`/`python-dotenv` si no están.
+
+> **Opción 6 — Gestionar servicios Docker:**
+>
+> | Sub-opción | Acción | Cuándo usarla |
+> |---|---|---|
+> | a | Iniciar servicios | Primera vez o tras `down` |
+> | b | Detener servicios | Para apagar todo |
+> | c | Reiniciar nodo de sensores | Cambios en archivos `.py` (~2 seg) |
+> | d | Rebuild completo | Cambios en `Dockerfile` (3-10 min) |
+> | e | Logs nodo sensores | Debug / verificar conexión MongoDB |
+> | f | Logs micro-ROS Agent | Debug / verificar UDP del ESP32 |
+> | g | Estado general | Ver si los contenedores están Running |
+
+---
+
+## 🚀 Uso del sistema
+
+### Iniciar el stack completo (Docker)
+
 ```bash
-cd microRostest/scripts
-./microros.sh           # Menú interactivo
-./microros.sh agent-udp # Agent WiFi directo
+# Linux / WSL2 nativo
+docker compose up -d
+
+# WSL2 + Docker Desktop
+docker compose -f docker-compose.windows.yml up -d
+
+docker compose ps                    # ver estado
+docker compose logs -f ros_node      # logs nodo ROS → MongoDB
+docker compose logs -f microros_agent # logs Agent UDP
+docker compose down                  # apagar
 ```
+
+O desde el menú: **opción 6** (sin necesidad de conocer los comandos Docker).
 
 ### Verificar datos en tiempo real
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 
-# Ver todos los tópicos
 ros2 topic list
-
-# Ver datos del sensor
 ros2 topic echo /sensor_data
 
 # Enviar comando al motor
@@ -263,24 +290,32 @@ ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
 ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
 ```
 
+### Compilar y flashear el ESP32
+
+Desde el menú, opción **2**, o directamente:
+
+```bash
+cd "MicroROS - ESP/scripts"
+./microros.sh all       # Build + Flash + Monitor
+./microros.sh agent-udp # Solo levantar el Agent UDP
+```
+
 ---
 
 ## 🧪 Calibración del Sensor pH
 
-El sistema incluye una herramienta interactiva para recalibrar el sensor en campo:
-
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd microRostest/scripts/utils
+cd "MicroROS - ESP/scripts/utils"
 python3 calibracion_ph.py
 ```
 
-**Flujo de calibración:**
-1. Sumerge el sensor en buffer (ej: pH 4.01)
-2. Presiona **ESPACIO** → captura 10 muestras warmup + 30 reales → calcula mediana
-3. Ingresa el pH real de esa solución
-4. Repite para pH 6.86 y 9.18
-5. Presiona **Enter** → calcula regresión lineal con numpy → genera bloque para `config.h`
+**Flujo:**
+1. Sumergir el sensor en buffer (ej: pH 4.01)
+2. Presionar **ESPACIO** → captura 10 muestras warmup + 30 reales → calcula mediana
+3. Ingresar el pH real de esa solución
+4. Repetir para pH 6.86 y 9.18
+5. Presionar **Enter** → calcula regresión lineal → genera bloque para `config.h`
 
 **Calibración actual (2026-02-19):**
 
@@ -302,43 +337,42 @@ python3 calibracion_ph.py
 
 ```
 sensores/
-├── README.md                          ← Este archivo
+├── menu.sh                        ← ★ Punto de entrada único (7 opciones)
+├── install.sh                     ← Instalador automático (detecta Linux/WSL2)
+├── docker-compose.yml             ← Linux / WSL2 nativo (network_mode: host)
+├── docker-compose.windows.yml     ← WSL2 + Docker Desktop (bridge + unicast DDS)
+├── .env.example                   ← Plantilla credenciales MongoDB
+├── .dockerignore
 │
-├── microRostest/                      ← Firmware ESP32 + herramientas
+├── docker/
+│   ├── Dockerfile.ros             ← Imagen única (ros:jazzy-ros-base)
+│   └── ros_entrypoint.sh          ← Sourcea ROS 2 antes del CMD
+│
+├── config/
+│   └── fastrtps_bridge.xml        ← Perfil DDS unicast para Docker Desktop
+│
+├── database/                      ← Nodo ROS 2 + módulos MongoDB
+│   ├── .env                       ← ★ Credenciales MongoDB (no commitear)
+│   ├── ros_sensor_node.py         ← Suscriptor /sensor_data → MongoDB
+│   └── modules/
+│       ├── config.py              ← Carga database/.env, configura MongoDB
+│       ├── service.py             ← SensorDBService (guardar/pingar/registrar)
+│       └── crear_colecciones.py
+│
+├── MicroROS - ESP/                ← Firmware ESP32 + herramientas PC
 │   ├── CMakeLists.txt
 │   ├── main/
-│   │   └── versions/wifi/
-│   │       ├── src/
-│   │       │   ├── main.c                    # Entry point, tareas FreeRTOS
-│   │       │   ├── sensor_manager_filtered.c # Lectura ADC con mediana
-│   │       │   ├── ros_publisher.c           # Publicador Float32MultiArray + sub motor
-│   │       │   └── motor_controller.c        # Control PWM motor DC
-│   │       └── include/
-│   │           ├── config.h                  # ★ Calibración, pines, parámetros
-│   │           ├── sensor_manager.h
-│   │           ├── ros_publisher.h
-│   │           └── motor_controller.h
-│   │
-│   ├── scripts/
-│   │   ├── microros.sh                # ★ Script unificado (15 opciones)
-│   │   ├── sensor_to_mongodb.py       # Alternativa directa a MongoDB
-│   │   └── utils/
-│   │       └── calibracion_ph.py      # ★ Herramienta calibración pH + numpy
-│   │
-│   └── docs/
-│       ├── README_ENV.md              # Configuración .env WiFi
-│       └── README_MONGODB.md          # Configuración MongoDB Atlas
+│   │   ├── versions/wifi/.env     ← ★ SSID, password, IP del Agent
+│   │   ├── Motores/
+│   │   │   └── motor_control_node.py  ← Nodo ROS 2 control de motores
+│   │   └── [fuentes C del firmware]
+│   └── scripts/
+│       ├── microros.sh            ← Submenú ESP32 (15 opciones)
+│       └── utils/
+│           └── calibracion_ph.py  ← Herramienta calibración + numpy
 │
-├── database/                          ← Nodo ROS + Dashboard
-│   ├── ros_sensor_node.py             # Suscriptor ROS → MongoDB
-│   ├── monitoreo_vivo.py              # Dashboard Streamlit
-│   └── requirements.txt
-│
-└── analisis/                          ← Scripts de análisis de datos
-    ├── scripts/
-    │   ├── analisis_temp_ph.py
-    │   └── analisis_temp_ph_3Dias.py
-    └── images/
+└── legacy/                        ← Análisis y versiones anteriores
+    └── analisis/
 ```
 
 ---
@@ -349,7 +383,6 @@ sensores/
 |---|---|---|
 | `ADC_PH_CHANNEL` | `ADC_CHANNEL_0` (GPIO36) | Canal ADC sensor pH |
 | `ADC_TEMP_CHANNEL` | `ADC_CHANNEL_3` (GPIO39) | Canal ADC temperatura |
-| `ADC_ATTEN` | `ADC_ATTEN_DB_12` | Rango 0–3.3V |
 | `PH_SLOPE` | `0.003622` | Pendiente regresión pH |
 | `PH_INTERCEPT` | `0.683614` | Intercepto regresión pH |
 | `TEMP_OFFSET_CAL` | `-0.7` | Offset calibración temperatura |
@@ -361,30 +394,31 @@ sensores/
 
 ## 🐛 Troubleshooting
 
-### ❌ ESP-IDF falla con "Python 3.13 vs 3.12"
+### ❌ `rclpy._rclpy_pybind11` no importa (conflicto conda)
+
+El menú lo resuelve automáticamente. Si ejecutas manualmente:
+
+```bash
+conda deactivate
+source /opt/ros/jazzy/setup.bash
+python3 database/ros_sensor_node.py
+```
+
+### ❌ ESP-IDF falla con Python 3.13
 
 ```bash
 conda deactivate && conda deactivate
-rm -rf microRostest/build
+rm -rf "MicroROS - ESP/build"
 source ~/esp/v5.5.2/esp-idf/export.sh
 idf.py build
 ```
 
-### ❌ `rclpy` no importa en scripts Python
-
-```bash
-# NO usar conda ni venv para scripts ROS
-conda deactivate
-source /opt/ros/jazzy/setup.bash
-python3 mi_script.py
-```
-
 ### ❌ ESP32 no conecta al Agent WiFi
 
-1. Verificar que `AGENT_IP` en `.env` es la IP real del PC (`./microros.sh show-ip`)
-2. Verificar que el Agent UDP está corriendo en el puerto correcto
-3. Desde el monitor serial (`./microros.sh monitor`) verificar que el ESP32 obtiene IP
-4. Firewall: `sudo ufw allow 8888/udp`
+1. Verificar que `AGENT_IP` en el `.env` del ESP32 es la IP real del PC
+2. Desde el menú, opción **2 → opción 13** muestra la IP actual
+3. Firewall: `sudo ufw allow 8888/udp`
+4. Verificar en monitor serial que el ESP32 obtuvo IP
 
 ### ❌ No aparecen tópicos en ROS 2
 
@@ -401,6 +435,21 @@ sudo usermod -a -G dialout $USER
 newgrp dialout
 ```
 
+### ❌ Servicios Docker no levantan
+
+```bash
+docker compose logs          # ver error exacto
+docker compose down --volumes
+docker compose up -d --build # rebuild desde cero
+```
+
+### ❌ En Windows/WSL2: ESP32 no llega al Agent
+
+1. Usar `docker-compose.windows.yml`, no el compose principal
+2. `AGENT_IP` del ESP32 debe ser la IP de WSL2 (`ip addr show eth0`), no la de Windows
+3. Habilitar regla de firewall en Windows para UDP 8888 (ver sección Windows/WSL2)
+4. Verificar que Docker Desktop tiene acceso a la red del host habilitado
+
 ---
 
 ## 📝 Roadmap
@@ -412,6 +461,11 @@ newgrp dialout
 - [x] MongoDB Atlas + Dashboard Streamlit
 - [x] Herramienta calibración pH con regresión numpy
 - [x] Soporte múltiples ESP32 simultáneos
+- [x] Stack del PC dockerizado (Agent + nodo ROS)
+- [x] Instalación automática con `menu.sh` + `install.sh`
+- [x] Soporte Windows via WSL2 + Docker Desktop
+- [x] Gestión de servicios Docker desde el menú
+- [x] Montaje en vivo de código Python (sin rebuild al modificar)
 - [ ] Alertas automáticas por valores fuera de rango
 - [ ] OTA updates para firmware ESP32
 - [ ] Panel de control motores en Dashboard
@@ -421,7 +475,7 @@ newgrp dialout
 
 ## 👤 Autor
 
-**Menderin** · [@Menderin](https://github.com/Menderin) · [github.com/Menderin/sensores](https://github.com/Menderin/sensores)
+**Menderin** · [@Menderin](https://github.com/Menderin)
 
 ---
 
@@ -430,6 +484,7 @@ newgrp dialout
 - [micro-ROS](https://micro.ros.org/) — Framework ROS 2 para microcontroladores
 - [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) — Framework Espressif
 - [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/) — Robot Operating System
+- [Docker Compose](https://docs.docker.com/compose/)
 
 <div align="center">
 
