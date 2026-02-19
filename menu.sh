@@ -25,19 +25,8 @@ SENSOR_NODE="$SCRIPT_DIR/database/ros_sensor_node.py"
 MOTOR_NODE="$SCRIPT_DIR/MicroROS - ESP/main/Motores/motor_control_node.py"
 ROS_SETUP="/opt/ros/jazzy/setup.bash"
 
-# ─── Detección de entorno ─────────────────────────────────────────────────────────────
-if grep -qi "microsoft" /proc/version 2>/dev/null; then
-    if docker info 2>/dev/null | grep -qi "docker desktop"; then
-        OS_TYPE="wsl2_desktop"
-        COMPOSE_CMD="docker compose -f docker-compose.windows.yml"
-    else
-        OS_TYPE="wsl2"
-        COMPOSE_CMD="docker compose"
-    fi
-else
-    OS_TYPE="linux"
-    COMPOSE_CMD="docker compose"
-fi
+OS_TYPE="linux"
+COMPOSE_CMD="docker compose"
 
 # ============================================================================
 # COLORES
@@ -428,16 +417,8 @@ show_status_bar() {
         docker_status="${RED}Docker no instalado${NC}"
     fi
 
-    # Etiqueta e ícono según entorno
-    local os_label
-    case "$OS_TYPE" in
-        linux)        os_label="${GREEN}Linux nativo${NC}" ;;
-        wsl2)         os_label="${CYAN}WSL2 + Docker nativo${NC}" ;;
-        wsl2_desktop) os_label="${YELLOW}WSL2 + Docker Desktop${NC}" ;;
-    esac
-
     echo -e "  ${CYAN}Estado:${NC}"
-    printf  "    Entorno        : %b\n" "$os_label"
+    printf  "    Entorno        : %b\n" "${GREEN}Ubuntu Linux${NC}"
     printf  "    MongoDB .env   : %s\n" "$(env_status "$ENV_MONGO")"
     printf  "    WiFi .env      : %s\n" "$(env_status "$ENV_WIFI")"
     echo -e "    Servicios Docker: $docker_status"

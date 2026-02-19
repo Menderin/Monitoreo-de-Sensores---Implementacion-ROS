@@ -49,17 +49,6 @@ else
     success "Ubuntu $OS_VERSION_ID detectado. Compatible."
 fi
 
-if [[ "$OS_TYPE" == "wsl2" || "$OS_TYPE" == "wsl2_desktop" ]]; then
-    echo ""
-    echo -e "${BOLD}${YELLOW}  Instrucciones para WSL2:${RESET}"
-    echo -e "  ${YELLOW}│${RESET}  La IP que debes poner como AGENT_IP en el ESP32 es la de WSL2,"
-    echo -e "  ${YELLOW}│${RESET}  NO la IP de Windows. Para verla ejecuta: ${CYAN}ip addr show eth0${RESET}"
-    echo -e "  ${YELLOW}│${RESET}  También asegúrate de que el firewall de Windows permita UDP 8888:"
-    echo -e "  ${YELLOW}│${RESET}    ${CYAN}New-NetFirewallRule -DisplayName 'microROS' -Direction Inbound \\"
-    echo -e "  ${YELLOW}│${RESET}    ${CYAN}  -Protocol UDP -LocalPort 8888 -Action Allow${RESET}  (PowerShell admin)"
-    echo ""
-fi
-
 # ==============================================================================
 # 2. Instalar Docker + Docker Compose plugin
 # ==============================================================================
@@ -96,22 +85,6 @@ if command -v docker &>/dev/null; then
     success "Docker $DOCKER_VERSION ya instalado."
 else
     install_docker
-fi
-
-# En WSL2 el daemon no arranca solo — iniciarlo si no está corriendo
-if [[ "$OS_TYPE" == "wsl2" ]]; then
-    if ! docker info &>/dev/null 2>&1; then
-        info "Iniciando Docker daemon en WSL2..."
-        sudo service docker start
-        sleep 3
-    fi
-fi
-
-# Refinar OS_TYPE ahora que Docker está disponible
-if [[ "$OS_TYPE" == "wsl2" ]] && docker info 2>/dev/null | grep -qi "docker desktop"; then
-    OS_TYPE="wsl2_desktop"
-    warn "Docker Desktop detectado en WSL2."
-    warn "Se usará docker-compose.windows.yml (bridge network + port mapping)."
 fi
 
 # Verificar docker compose v2
@@ -168,17 +141,17 @@ if [[ -f "database/.env" ]]; then
     fi
 else
     if [[ -f ".env.example" ]]; then
-        cp .env.example .env
-        warn "Se creó .env desde .env.example."
+        cp .env.example database/.env
+        warn "Se creó database/.env desde .env.example."
         echo ""
         echo -e "${YELLOW}  ┌─────────────────────────────────────────────────────┐${RESET}"
-        echo -e "${YELLOW}  │  ACCIÓN REQUERIDA: Editar el archivo .env            │${RESET}"
+        echo -e "${YELLOW}  │  ACCIÓN REQUERIDA: Editar database/.env              │${RESET}"
         echo -e "${YELLOW}  │                                                       │${RESET}"
         echo -e "${YELLOW}  │  Configura al menos:                                  │${RESET}"
         echo -e "${YELLOW}  │    MONGO_URI=mongodb+srv://...                        │${RESET}"
         echo -e "${YELLOW}  │    MONGO_DB=Datos_ESP                                 │${RESET}"
         echo -e "${YELLOW}  │                                                       │${RESET}"
-        echo -e "${YELLOW}  │  Comando: nano .env                                   │${RESET}"
+        echo -e "${YELLOW}  │  Comando: nano database/.env                          │${RESET}"
         echo -e "${YELLOW}  └─────────────────────────────────────────────────────┘${RESET}"
         echo ""
         read -rp "¿Deseas editar database/.env ahora? [S/n] " edit_env
@@ -209,32 +182,19 @@ echo "  • ros_sensor_node — Nodo ROS 2 → MongoDB"
 echo ""
 read -rp "¿Iniciar servicios ahora? [S/n] " start_now
 if [[ "$start_now" =~ ^[nN]$ ]]; then
-    if [[ "$OS_TYPE" == "wsl2_desktop" ]]; then
-        info "Puedes iniciarlos manualmente con:"
-        info "   docker compose -f docker-compose.windows.yml up -d"
-    else
-        info "Puedes iniciarlos manualmente con:"
-        info "   docker compose up -d"
-    fi
+    info "Puedes iniciarlos manualmente con:"
+    info "   docker compose up -d"
     echo ""
     exit 0
 fi
 
 # Build
 info "Construyendo imágenes Docker (puede tardar varios minutos la primera vez)..."
-if [[ "$OS_TYPE" == "wsl2_desktop" ]]; then
-    docker compose -f docker-compose.windows.yml build
-else
-    docker compose build
-fi
+docker compose build
 
 # Arranque
 info "Iniciando servicios en background..."
-if [[ "$OS_TYPE" == "wsl2_desktop" ]]; then
-    docker compose -f docker-compose.windows.yml up -d
-else
-    docker compose up -d
-fi
+docker compose up -d
 
 echo ""
 success "══════════════════════════════════════════════"
@@ -242,13 +202,8 @@ success "  ¡Instalación completada!"
 success "══════════════════════════════════════════════"
 echo ""
 echo "  Comandos útiles:"
-if [[ "$OS_TYPE" == "wsl2_desktop" ]]; then
-    COMPOSE_CMD="docker compose -f docker-compose.windows.yml"
-else
-    COMPOSE_CMD="docker compose"
-fi
-echo -e "  ${CYAN}${COMPOSE_CMD} ps${RESET}                        — Estado de los servicios"
-echo -e "  ${CYAN}${COMPOSE_CMD} logs -f ros_sensor_node${RESET}   — Logs del nodo ROS"
-echo -e "  ${CYAN}${COMPOSE_CMD} logs -f microros_agent${RESET}    — Logs del Agent"
-echo -e "  ${CYAN}${COMPOSE_CMD} down${RESET}                      — Apagar todos los servicios"
+echo -e "  ${CYAN}docker compose ps${RESET}                        — Estado de los servicios"
+echo -e "  ${CYAN}docker compose logs -f ros_sensor_node${RESET}   — Logs del nodo ROS"
+echo -e "  ${CYAN}docker compose logs -f microros_agent${RESET}    — Logs del Agent"
+echo -e "  ${CYAN}docker compose down${RESET}                      — Apagar todos los servicios"
 echo ""

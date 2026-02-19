@@ -140,10 +140,6 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
 
 4. Configura las credenciales desde el propio menú (**opción 3**) antes de continuar.
 
-> **Windows:** el script detecta automáticamente WSL2 + Docker Desktop y usa
-> `docker-compose.windows.yml` (bridge network + unicast DDS) en lugar del compose
-> principal. Ver sección [Windows / WSL2](#-windows--wsl2) para detalles.
-
 ---
 
 ### Opción B — Instalación manual paso a paso
@@ -182,43 +178,8 @@ nano "MicroROS - ESP/main/versions/wifi/.env"
 #### 4. Construir e iniciar servicios
 
 ```bash
-# Linux / WSL2 nativo
 docker compose up -d
-
-# WSL2 + Docker Desktop (Windows)
-docker compose -f docker-compose.windows.yml up -d
-
 docker compose ps  # verificar que ambos servicios estén Running
-```
-
----
-
-## 🪟 Windows / WSL2
-
-`network_mode: host` no funciona en Docker Desktop (corre dentro de una VM Hyper-V).
-Para Windows se incluye un compose alternativo que usa bridge network:
-
-| Plataforma | Compose a usar | Soporte |
-|---|---|---|
-| Ubuntu nativo | `docker-compose.yml` | ✅ Completo |
-| WSL2 + Docker nativo | `docker-compose.yml` | ✅ Completo |
-| WSL2 + Docker Desktop | `docker-compose.windows.yml` | ✅ Con limitaciones |
-| Docker Desktop (sin WSL2) | — | ❌ No soportado |
-
-**`docker-compose.windows.yml` diferencias:**
-- Bridge network `ros_net` en lugar de `network_mode: host`
-- Puerto `8888:8888/udp` mapeado al host Windows
-- `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` (FastRTPS en vez de CycloneDDS)
-- `config/fastrtps_bridge.xml` — desactiva multicast DDS y usa unicast entre contenedores
-
-**AGENT_IP para el ESP32 en WSL2:**
-```bash
-ip addr show eth0   # dentro de WSL2 — usar esta IP, NO la de Windows
-```
-
-**Firewall Windows** (PowerShell como administrador):
-```powershell
-New-NetFirewallRule -DisplayName 'microROS UDP' -Direction Inbound -Protocol UDP -LocalPort 8888 -Action Allow
 ```
 
 ---
@@ -262,12 +223,7 @@ Punto de entrada único para gestionar todo el sistema:
 ### Iniciar el stack completo (Docker)
 
 ```bash
-# Linux / WSL2 nativo
 docker compose up -d
-
-# WSL2 + Docker Desktop
-docker compose -f docker-compose.windows.yml up -d
-
 docker compose ps                    # ver estado
 docker compose logs -f ros_node      # logs nodo ROS → MongoDB
 docker compose logs -f microros_agent # logs Agent UDP
@@ -339,17 +295,13 @@ python3 calibracion_ph.py
 sensores/
 ├── menu.sh                        ← ★ Punto de entrada único (7 opciones)
 ├── install.sh                     ← Instalador automático (detecta Linux/WSL2)
-├── docker-compose.yml             ← Linux / WSL2 nativo (network_mode: host)
-├── docker-compose.windows.yml     ← WSL2 + Docker Desktop (bridge + unicast DDS)
+├── docker-compose.yml             ← Orquesta Agent + nodo ROS (network_mode: host)
 ├── .env.example                   ← Plantilla credenciales MongoDB
 ├── .dockerignore
 │
 ├── docker/
 │   ├── Dockerfile.ros             ← Imagen única (ros:jazzy-ros-base)
 │   └── ros_entrypoint.sh          ← Sourcea ROS 2 antes del CMD
-│
-├── config/
-│   └── fastrtps_bridge.xml        ← Perfil DDS unicast para Docker Desktop
 │
 ├── database/                      ← Nodo ROS 2 + módulos MongoDB
 │   ├── .env                       ← ★ Credenciales MongoDB (no commitear)
@@ -443,12 +395,7 @@ docker compose down --volumes
 docker compose up -d --build # rebuild desde cero
 ```
 
-### ❌ En Windows/WSL2: ESP32 no llega al Agent
-
-1. Usar `docker-compose.windows.yml`, no el compose principal
-2. `AGENT_IP` del ESP32 debe ser la IP de WSL2 (`ip addr show eth0`), no la de Windows
-3. Habilitar regla de firewall en Windows para UDP 8888 (ver sección Windows/WSL2)
-4. Verificar que Docker Desktop tiene acceso a la red del host habilitado
+> **Plataformas soportadas:** Ubuntu 22.04 / 24.04 nativo únicamente.
 
 ---
 
@@ -463,7 +410,6 @@ docker compose up -d --build # rebuild desde cero
 - [x] Soporte múltiples ESP32 simultáneos
 - [x] Stack del PC dockerizado (Agent + nodo ROS)
 - [x] Instalación automática con `menu.sh` + `install.sh`
-- [x] Soporte Windows via WSL2 + Docker Desktop
 - [x] Gestión de servicios Docker desde el menú
 - [x] Montaje en vivo de código Python (sin rebuild al modificar)
 - [ ] Alertas automáticas por valores fuera de rango
