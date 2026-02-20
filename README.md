@@ -170,8 +170,8 @@ nano database/.env
 #### 3. Configurar WiFi del ESP32
 
 ```bash
-cp "MicroROS - ESP/main/versions/wifi/.env.example" "MicroROS - ESP/main/versions/wifi/.env"
-nano "MicroROS - ESP/main/versions/wifi/.env"
+cp "microros-esp/main/versions/wifi/.env.example" "microros-esp/main/versions/wifi/.env"
+nano "microros-esp/main/versions/wifi/.env"
 # Rellenar: WIFI_SSID, WIFI_PASSWORD, AGENT_IP (IP del PC), AGENT_PORT=8888
 ```
 
@@ -251,7 +251,7 @@ ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
 Desde el menú, opción **2**, o directamente:
 
 ```bash
-cd "MicroROS - ESP/scripts"
+cd "microros-esp/scripts"
 ./microros.sh all       # Build + Flash + Monitor
 ./microros.sh agent-udp # Solo levantar el Agent UDP
 ```
@@ -262,7 +262,7 @@ cd "MicroROS - ESP/scripts"
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd "MicroROS - ESP/scripts/utils"
+cd "microros-esp/scripts/utils"
 python3 calibracion_ph.py
 ```
 
@@ -311,7 +311,7 @@ sensores/
 │       ├── service.py             ← SensorDBService (guardar/pingar/registrar)
 │       └── crear_colecciones.py
 │
-├── MicroROS - ESP/                ← Firmware ESP32 + herramientas PC
+├── microros-esp/                ← Firmware ESP32 + herramientas PC
 │   ├── CMakeLists.txt
 │   ├── main/
 │   │   ├── versions/wifi/.env     ← ★ SSID, password, IP del Agent
@@ -360,7 +360,7 @@ python3 database/ros_sensor_node.py
 
 ```bash
 conda deactivate && conda deactivate
-rm -rf "MicroROS - ESP/build"
+rm -rf "microros-esp/build"
 source ~/esp/v5.5.2/esp-idf/export.sh
 idf.py build
 ```
