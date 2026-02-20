@@ -2,14 +2,14 @@
 
 <div align="center">
 
-**Última actualización:** 19 de febrero de 2026
+**Última actualización:** 20 de febrero de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-WiFi%2FUDP-orange.svg)](https://micro.ros.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420.svg)](https://ubuntu.com/)
 
 **Sistema IoT de monitoreo ambiental: ESP32 + ROS 2 + micro-ROS (WiFi/UDP) + MongoDB**
 
@@ -30,8 +30,7 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 - 🏠 **Control de motor DC** — suscriptor ROS 2 para comandos STOP/LEFT/RIGHT/SPEED
 - ☁️ **MongoDB Atlas** — almacenamiento automático con timestamps
 - 📈 **Dashboard Streamlit** — desplegado en Streamlit Cloud
-- 🐳 **Stack del PC en Docker** — micro-ROS Agent + nodo ROS desplegables con un comando
-- 🎛️ **Menú unificado** — `menu.sh` como punto de entrada para instalar, configurar y operar
+- 🎛️ **Menú unificado** — `menu.sh` como punto de entrada para configurar y operar
 
 ---
 
@@ -54,19 +53,13 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 └─────────────────────── WiFi/UDP ────────────────────────────────────┘
                                   │
               ┌───────────────────▼────────────────────┐
-              │         PC — Docker Compose             │
-              │  ┌──────────────────────────────────┐  │
-              │  │  microros_agent (network_mode:host)│  │
-              │  │  micro-ROS Agent UDP/8888          │  │
-              │  └──────────────┬───────────────────┘  │
-              │                 │ DDS (FastRTPS)        │
-              │  ┌──────────────▼───────────────────┐  │
-              │  │  ros_node (network_mode:host)     │  │
-              │  │  ros_sensor_node.py               │  │
-              │  │  ├── Parsea Float32MultiArray     │  │
-              │  │  ├── Identifica ESP32 por MAC     │  │
-              │  │  └── Guarda en MongoDB Atlas      │  │
-              │  └──────────────────────────────────┘  │
+              │              PC — nativo               │
+              │  micro_ros_agent UDP/8888               │
+              │         │ DDS (FastRTPS)                │
+              │  ros_sensor_node.py                     │
+              │  ├── Parsea Float32MultiArray           │
+              │  ├── Identifica ESP32 por MAC           │
+              │  └── Guarda en MongoDB Atlas            │
               └────────────────────────────────────────┘
                                   │
               ┌───────────────────▼────────────────────┐
@@ -74,8 +67,6 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
               │    (visualización + autenticación)      │
               └────────────────────────────────────────┘
 ```
-
-> **`network_mode: host`** en todos los servicios Docker: necesario para que el Agent reciba UDP del ESP32 sin NAT y para que ROS 2 DDS descubra nodos via multicast.
 
 ### Topics ROS 2
 
@@ -119,7 +110,12 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
 
 ## 🛠️ Instalación en una PC nueva
 
-### Opción A — Instalación automática (recomendada)
+### Requisitos
+
+- Ubuntu **24.04** LTS (nativo)
+- Conexión a internet
+
+### Pasos
 
 1. Clona el repositorio:
    ```bash
@@ -127,60 +123,21 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
    cd Monitoreo-de-Sensores---Implementacion-ROS
    ```
 
-2. Lanza el menú principal:
+2. Ejecuta el instalador:
    ```bash
-   chmod +x menu.sh && ./menu.sh
+   chmod +x install.sh && sudo ./install.sh
    ```
 
-3. Selecciona **opción 1 → Instalar sistema**. El script `install.sh` se encarga de:
-   - Detectar si es Ubuntu nativo, WSL2 nativo o WSL2 + Docker Desktop
-   - Instalar Docker Engine + Docker Compose plugin
-   - Configurar `database/.env` (credenciales MongoDB)
-   - Construir las imágenes Docker y levantar los servicios
+   El script se encarga de:
+   - Instalar **ROS 2 Jazzy** via apt
+   - Compilar el **micro-ROS Agent** desde fuente con colcon (`~/microros_ws`)
+   - Instalar dependencias Python (`pymongo`, `python-dotenv`, `certifi`)
+   - Configurar `database/.env` con las credenciales MongoDB
 
-4. Configura las credenciales desde el propio menú (**opción 3**) antes de continuar.
-
----
-
-### Opción B — Instalación manual paso a paso
-
-#### 1. Instalar Docker
-
-```bash
-sudo apt-get update && sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-    | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker $USER  # cerrar sesión para aplicar
-```
-
-#### 2. Configurar credenciales MongoDB
-
-```bash
-cp .env.example database/.env
-nano database/.env
-# Rellenar: MONGO_URI, MONGO_DB, MONGO_COLLECTION
-```
-
-#### 3. Configurar WiFi del ESP32
-
-```bash
-cp "microros-esp/main/versions/wifi/.env.example" "microros-esp/main/versions/wifi/.env"
-nano "microros-esp/main/versions/wifi/.env"
-# Rellenar: WIFI_SSID, WIFI_PASSWORD, AGENT_IP (IP del PC), AGENT_PORT=8888
-```
-
-#### 4. Construir e iniciar servicios
-
-```bash
-docker compose up -d
-docker compose ps  # verificar que ambos servicios estén Running
-```
+3. ¡Listo! Usa el menú para operar el sistema:
+   ```bash
+   ./menu.sh
+   ```
 
 ---
 
@@ -188,72 +145,62 @@ docker compose ps  # verificar que ambos servicios estén Running
 
 Punto de entrada único para gestionar todo el sistema:
 
-```
+```bash
 ./menu.sh
 ```
 
 | Opción | Acción |
 |---|---|
-| **1** | Instalar sistema (Docker + dependencias + build + up) |
-| **2** | Acciones ESP32 (compilar, flashear, monitor, Agent serial/UDP) |
-| **3** | Configurar credenciales (MongoDB `database/.env` y WiFi `.env`) |
-| **4** | Iniciar nodo de sensores localmente (`ros_sensor_node.py`) |
-| **5** | Iniciar nodo de motores localmente (`motor_control_node.py`) |
-| **6** | Gestionar servicios Docker (iniciar, detener, reiniciar, logs, rebuild) |
-| **7** | Salir |
+| **1** | Modificar credenciales (MongoDB `database/.env` y WiFi `microros-esp/main/.env`) |
+| **2** | Iniciar agentes (micro-ROS Agent UDP / nodo sensores → MongoDB / motores) |
+| **3** | ESP32 (compilar, flashear, monitor, Agent, calibración…) |
+| **0** | Salir |
 
-> **Opciones 4 y 5:** ejecutan los nodos ROS 2 directamente en el host (sin Docker). El menú limpia automáticamente el entorno conda si está activo, crea un `.venv/` con `--system-site-packages` e instala `pymongo`/`python-dotenv` si no están.
+### Submenú `2) Iniciar agentes`
 
-> **Opción 6 — Gestionar servicios Docker:**
->
-> | Sub-opción | Acción | Cuándo usarla |
-> |---|---|---|
-> | a | Iniciar servicios | Primera vez o tras `down` |
-> | b | Detener servicios | Para apagar todo |
-> | c | Reiniciar nodo de sensores | Cambios en archivos `.py` (~2 seg) |
-> | d | Rebuild completo | Cambios en `Dockerfile` (3-10 min) |
-> | e | Logs nodo sensores | Debug / verificar conexión MongoDB |
-> | f | Logs micro-ROS Agent | Debug / verificar UDP del ESP32 |
-> | g | Estado general | Ver si los contenedores están Running |
+| Sub-opción | Acción | Cómo usar |
+|---|---|---|
+| **a** | Iniciar micro-ROS Agent UDP | Abrir en una terminal, Ctrl+C para detener |
+| **b** | Enviar datos a MongoDB | Abrir en otra terminal (requiere agent activo) |
+| **c** | Control de motores | Abrir en otra terminal (requiere agent activo) |
 
 ---
 
 ## 🚀 Uso del sistema
 
-### Iniciar el stack completo (Docker)
+### Flujo típico de operación
 
-```bash
-docker compose up -d
-docker compose ps                    # ver estado
-docker compose logs -f ros_node      # logs nodo ROS → MongoDB
-docker compose logs -f microros_agent # logs Agent UDP
-docker compose down                  # apagar
-```
+1. **Terminal 1** — arrancar el Agent:
+   ```
+   ./menu.sh → 2 → a
+   ```
 
-O desde el menú: **opción 6** (sin necesidad de conocer los comandos Docker).
+2. **Terminal 2** — iniciar nodo de sensores:
+   ```
+   ./menu.sh → 2 → b
+   ```
 
-### Verificar datos en tiempo real
+3. Verificar datos en tiempo real:
+   ```bash
+   source /opt/ros/jazzy/setup.bash
+   ros2 topic list
+   ros2 topic echo /sensor_data
+   ```
 
-```bash
-source /opt/ros/jazzy/setup.bash
-
-ros2 topic list
-ros2 topic echo /sensor_data
-
-# Enviar comando al motor
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'LEFT'" --once
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
-```
+4. Enviar comandos al motor:
+   ```bash
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'LEFT'" --once
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
+   ```
 
 ### Compilar y flashear el ESP32
 
-Desde el menú, opción **2**, o directamente:
+Desde el menú, opción **3**, o directamente:
 
 ```bash
-cd "microros-esp/scripts"
-./microros.sh all       # Build + Flash + Monitor
-./microros.sh agent-udp # Solo levantar el Agent UDP
+cd microros-esp/scripts
+./microros.sh
 ```
 
 ---
@@ -293,15 +240,9 @@ python3 calibracion_ph.py
 
 ```
 sensores/
-├── menu.sh                        ← ★ Punto de entrada único (7 opciones)
-├── install.sh                     ← Instalador automático (detecta Linux/WSL2)
-├── docker-compose.yml             ← Orquesta Agent + nodo ROS (network_mode: host)
+├── menu.sh                        ← ★ Punto de entrada (3 opciones)
+├── install.sh                     ← Instalador automático (Ubuntu 24.04)
 ├── .env.example                   ← Plantilla credenciales MongoDB
-├── .dockerignore
-│
-├── docker/
-│   ├── Dockerfile.ros             ← Imagen única (ros:jazzy-ros-base)
-│   └── ros_entrypoint.sh          ← Sourcea ROS 2 antes del CMD
 │
 ├── database/                      ← Nodo ROS 2 + módulos MongoDB
 │   ├── .env                       ← ★ Credenciales MongoDB (no commitear)
@@ -311,15 +252,15 @@ sensores/
 │       ├── service.py             ← SensorDBService (guardar/pingar/registrar)
 │       └── crear_colecciones.py
 │
-├── microros-esp/                ← Firmware ESP32 + herramientas PC
+├── microros-esp/                  ← Firmware ESP32 + herramientas PC
 │   ├── CMakeLists.txt
 │   ├── main/
-│   │   ├── versions/wifi/.env     ← ★ SSID, password, IP del Agent
+│   │   ├── .env                   ← ★ SSID, password, IP del Agent
 │   │   ├── Motores/
 │   │   │   └── motor_control_node.py  ← Nodo ROS 2 control de motores
 │   │   └── [fuentes C del firmware]
 │   └── scripts/
-│       ├── microros.sh            ← Submenú ESP32 (15 opciones)
+│       ├── microros.sh            ← Submenú ESP32 completo
 │       └── utils/
 │           └── calibracion_ph.py  ← Herramienta calibración + numpy
 │
@@ -348,11 +289,13 @@ sensores/
 
 ### ❌ `rclpy._rclpy_pybind11` no importa (conflicto conda)
 
-El menú lo resuelve automáticamente. Si ejecutas manualmente:
+El menú lo resuelve automáticamente usando un subshell limpio. Si ejecutas manualmente:
 
 ```bash
+# Abrir una terminal nueva sin conda activo, o:
 conda deactivate
 source /opt/ros/jazzy/setup.bash
+source ~/microros_ws/install/setup.bash
 python3 database/ros_sensor_node.py
 ```
 
@@ -367,8 +310,8 @@ idf.py build
 
 ### ❌ ESP32 no conecta al Agent WiFi
 
-1. Verificar que `AGENT_IP` en el `.env` del ESP32 es la IP real del PC
-2. Desde el menú, opción **2 → opción 13** muestra la IP actual
+1. Verificar que `AGENT_IP` en `microros-esp/main/.env` es la IP real del PC
+2. Desde el menú: **3 → "Mostrar IP"** muestra la IP actual
 3. Firewall: `sudo ufw allow 8888/udp`
 4. Verificar en monitor serial que el ESP32 obtuvo IP
 
@@ -387,16 +330,6 @@ sudo usermod -a -G dialout $USER
 newgrp dialout
 ```
 
-### ❌ Servicios Docker no levantan
-
-```bash
-docker compose logs          # ver error exacto
-docker compose down --volumes
-docker compose up -d --build # rebuild desde cero
-```
-
-> **Plataformas soportadas:** Ubuntu 22.04 / 24.04 nativo únicamente.
-
 ---
 
 ## 📝 Roadmap
@@ -408,10 +341,8 @@ docker compose up -d --build # rebuild desde cero
 - [x] MongoDB Atlas + Dashboard Streamlit
 - [x] Herramienta calibración pH con regresión numpy
 - [x] Soporte múltiples ESP32 simultáneos
-- [x] Stack del PC dockerizado (Agent + nodo ROS)
-- [x] Instalación automática con `menu.sh` + `install.sh`
-- [x] Gestión de servicios Docker desde el menú
-- [x] Montaje en vivo de código Python (sin rebuild al modificar)
+- [x] Instalación automática con `install.sh` (ROS 2 + micro-ROS Agent + Python)
+- [x] Menú unificado `menu.sh` (credenciales, agentes, ESP32)
 - [ ] Alertas automáticas por valores fuera de rango
 - [ ] OTA updates para firmware ESP32
 - [ ] Panel de control motores en Dashboard
@@ -430,7 +361,6 @@ docker compose up -d --build # rebuild desde cero
 - [micro-ROS](https://micro.ros.org/) — Framework ROS 2 para microcontroladores
 - [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) — Framework Espressif
 - [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/) — Robot Operating System
-- [Docker Compose](https://docs.docker.com/compose/)
 
 <div align="center">
 
