@@ -30,6 +30,14 @@ header()  { echo -e "\n${BOLD}${CYAN}══════════════�
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
 
+# Si el home fue borrado, recrearlo
+if [[ ! -d "$REAL_HOME" ]]; then
+    info "Directorio home de $REAL_USER no existe — creando $REAL_HOME ..."
+    mkdir -p "$REAL_HOME"
+    chown "$REAL_USER:$REAL_USER" "$REAL_HOME"
+    chmod 755 "$REAL_HOME"
+fi
+
 # ─── Variables configurables ──────────────────────────────────────────────────
 REPO_URL="${REPO_URL:-https://github.com/Menderin/Monitoreo-de-Sensores---Implementacion-ROS}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
@@ -96,6 +104,7 @@ else
     sudo -u "$REAL_USER" rosdep update
 
     # Añadir source automático al .bashrc del usuario real
+    touch "$REAL_HOME/.bashrc"
     if ! grep -q "source /opt/ros/jazzy/setup.bash" "$REAL_HOME/.bashrc"; then
         echo "source /opt/ros/jazzy/setup.bash" >> "$REAL_HOME/.bashrc"
         info "Añadido 'source /opt/ros/jazzy/setup.bash' al ~/.bashrc"
@@ -133,7 +142,8 @@ else
         ros-dev-tools
 
     info "Creando workspace en $MICROROS_WS ..."
-    sudo -u "$REAL_USER" mkdir -p "$MICROROS_WS/src"
+    mkdir -p "$MICROROS_WS/src"
+    chown -R "$REAL_USER:$REAL_USER" "$MICROROS_WS"
     pushd "$MICROROS_WS/src" > /dev/null
 
     info "Clonando micro_ros_msgs y micro-ROS-Agent (rama jazzy)..."
