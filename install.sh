@@ -44,11 +44,13 @@ REPO_BRANCH="${REPO_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-$REAL_HOME/Microalgas-Monitoring}"
 ROS_DISTRO="jazzy"
 MICROROS_WS="$REAL_HOME/microros_ws"
+ESP_IDF_VERSION="${ESP_IDF_VERSION:-v5.4.1}"
+ESP_IDF_DIR="$REAL_HOME/esp/esp-idf"
 
 # ==============================================================================
 # 1. Verificar Ubuntu 24.04
 # ==============================================================================
-header "1/6  Verificando sistema operativo"
+header "1/7  Verificando sistema operativo"
 
 [[ -f /etc/os-release ]] || error "No se puede determinar el sistema operativo."
 source /etc/os-release
@@ -65,7 +67,7 @@ success "Ubuntu $VERSION_ID detectado."
 # ==============================================================================
 # 2. Instalar ROS 2 Jazzy
 # ==============================================================================
-header "2/6  Instalando ROS 2 Jazzy"
+header "2/7  Instalando ROS 2 Jazzy"
 
 if [[ -f /opt/ros/jazzy/setup.bash ]]; then
     success "ROS 2 Jazzy ya está instalado."
@@ -120,7 +122,7 @@ set +u; source /opt/ros/jazzy/setup.bash; set -u
 # ==============================================================================
 # 3. Instalar micro-ROS Agent (compilar desde fuente con colcon)
 # ==============================================================================
-header "3/6  Instalando micro-ROS Agent"
+header "3/7  Instalando micro-ROS Agent"
 
 # Verificar si ya existe y funciona
 if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
@@ -168,9 +170,38 @@ else
 fi
 
 # ==============================================================================
-# 4. Instalar dependencias Python
+# 4. Instalar ESP-IDF
 # ==============================================================================
-header "4/6  Instalando dependencias Python"
+header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
+
+if [[ -f "$ESP_IDF_DIR/export.sh" ]]; then
+    success "ESP-IDF ya instalado en $ESP_IDF_DIR"
+else
+    info "Instalando dependencias del sistema para ESP-IDF..."
+    apt-get install -y --no-install-recommends \
+        git wget flex bison gperf cmake ninja-build ccache \
+        libffi-dev libssl-dev dfu-util libusb-1.0-0
+
+    info "Clonando ESP-IDF $ESP_IDF_VERSION en $ESP_IDF_DIR ..."
+    mkdir -p "$REAL_HOME/esp"
+    sudo -u "$REAL_USER" git clone -b "$ESP_IDF_VERSION" --recursive \
+        https://github.com/espressif/esp-idf.git "$ESP_IDF_DIR"
+    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/esp"
+
+    info "Ejecutando install.sh de ESP-IDF para esp32..."
+    sudo -u "$REAL_USER" bash -c "cd '$ESP_IDF_DIR' && ./install.sh esp32"
+
+    if ! grep -q "esp-idf/export.sh" "$REAL_HOME/.bashrc"; then
+        echo ". $ESP_IDF_DIR/export.sh" >> "$REAL_HOME/.bashrc"
+        info "Añadido '. $ESP_IDF_DIR/export.sh' al ~/.bashrc"
+    fi
+    success "ESP-IDF instalado."
+fi
+
+# ==============================================================================
+# 5. Instalar dependencias Python
+# ==============================================================================
+header "5/7  Instalando dependencias Python"
 
 # Usar pip con --break-system-packages (Ubuntu 24.04 PEP 668)
 PIP_FLAGS="--break-system-packages --quiet"
@@ -187,9 +218,9 @@ python3 -c "import pymongo; import dotenv; import certifi" \
     || error "Falló la verificación de dependencias Python."
 
 # ==============================================================================
-# 5. Clonar / verificar repositorio
+# 6. Clonar / verificar repositorio
 # ==============================================================================
-header "5/6  Preparando repositorio"
+header "6/7  Preparando repositorio"
 
 # Detectar si ya estamos dentro del proyecto
 if [[ -f "$(pwd)/database/ros_sensor_node.py" && -d "$(pwd)/.git" ]]; then
@@ -210,9 +241,9 @@ fi
 cd "$INSTALL_DIR"
 
 # ==============================================================================
-# 6. Configurar credenciales MongoDB
+# 7. Configurar credenciales MongoDB
 # ==============================================================================
-header "6/6  Configuración de credenciales"
+header "7/7  Configuración de credenciales"
 
 if [[ -f "database/.env" ]]; then
     success "database/.env ya existe."
@@ -224,7 +255,9 @@ if [[ -f "database/.env" ]]; then
     fi
 else
     if [[ -f ".env.example" ]]; then
-        cp .env.example database/.env
+        sudo -u "$REAL_USER" cp .env.example database/.env
+        chown "$REAL_USER:$REAL_USER" database/.env
+        chmod 600 database/.env
         echo ""
         echo -e "${YELLOW}  ┌──────────────────────────────────────────────────────┐${RESET}"
         echo -e "${YELLOW}  │  ACCIÓN REQUERIDA: Configurar database/.env           │${RESET}"
@@ -236,7 +269,7 @@ else
         echo ""
         read -rp "¿Editar database/.env ahora? [S/n] " edit_env
         if [[ ! "$edit_env" =~ ^[nN]$ ]]; then
-            "${EDITOR:-nano}" database/.env
+            sudo -u "$REAL_USER" "${EDITOR:-nano}" database/.env
         fi
     else
         error "No se encontró .env.example. El repositorio puede estar incompleto."
@@ -266,6 +299,10 @@ echo -e "  ${CYAN}# 3. En otra terminal: iniciar nodo ROS 2 → MongoDB${RESET}"
 echo -e "  source /opt/ros/jazzy/setup.bash"
 echo -e "  source $MICROROS_WS/install/setup.bash"
 echo -e "  python3 $INSTALL_DIR/database/ros_sensor_node.py"
+echo ""
+echo -e "  ${CYAN}# Para compilar/flashear el ESP32:${RESET}"
+echo -e "  . $ESP_IDF_DIR/export.sh"
+echo -e "  cd $INSTALL_DIR && ./menu.sh  # opción 3"
 echo ""
 echo -e "  ${CYAN}# IP de este equipo (configurar como AGENT_IP en el ESP32):${RESET}"
 ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | \

@@ -19,7 +19,23 @@ set -e  # Salir si hay error
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
-ESP_IDF_PATH="/home/lab-ros/esp/v5.5.2/esp-idf"
+
+# Auto-detect ESP-IDF path (busca en ubicaciones comunes)
+_idf_candidates=(
+    "${IDF_PATH:-}"
+    "$HOME/esp/esp-idf"
+    "$HOME/esp/v5.5.2/esp-idf"
+    "$HOME/esp/v5.4.1/esp-idf"
+    "$HOME/esp/v5.3.2/esp-idf"
+)
+ESP_IDF_PATH=""
+for _d in "${_idf_candidates[@]}"; do
+    if [[ -n "$_d" && -f "$_d/export.sh" ]]; then
+        ESP_IDF_PATH="$_d"
+        break
+    fi
+done
+unset _idf_candidates _d
 ROS_SETUP="/opt/ros/jazzy/setup.bash"
 MICROROS_WS="$HOME/microros_ws"
 ESP_PORT="/dev/ttyUSB0"
