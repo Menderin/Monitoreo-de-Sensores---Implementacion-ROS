@@ -4,6 +4,9 @@ set(MAIN_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(ENV_FILE "${MAIN_SRC_DIR}/versions/wifi/.env")
 set(WIFI_CONFIG_H "${MAIN_SRC_DIR}/versions/wifi/wifi_config.h")
 
+# Re-ejecutar CMake automáticamente si .env cambia
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ENV_FILE}")
+
 # Verificar que existe el archivo .env
 if(NOT EXISTS "${ENV_FILE}")
     message(FATAL_ERROR "❌ No se encontró el archivo .env en: ${ENV_FILE}")
@@ -57,6 +60,18 @@ file(WRITE "${WIFI_CONFIG_H}"
 ")
 
 message(STATUS "✅ Generado wifi_config.h - SSID: ${WIFI_SSID}, Agent: ${AGENT_IP}:${AGENT_PORT}")
+
+# Actualizar sdkconfig con las credenciales del .env (para uros_network_interface_initialize)
+set(SDKCONFIG_FILE "${CMAKE_SOURCE_DIR}/sdkconfig")
+if(EXISTS "${SDKCONFIG_FILE}")
+    file(READ "${SDKCONFIG_FILE}" SDKCONFIG_CONTENTS)
+    string(REGEX REPLACE "CONFIG_ESP_WIFI_SSID=\"[^\"]*\"" "CONFIG_ESP_WIFI_SSID=\"${WIFI_SSID}\"" SDKCONFIG_CONTENTS "${SDKCONFIG_CONTENTS}")
+    string(REGEX REPLACE "CONFIG_ESP_WIFI_PASSWORD=\"[^\"]*\"" "CONFIG_ESP_WIFI_PASSWORD=\"${WIFI_PASSWORD}\"" SDKCONFIG_CONTENTS "${SDKCONFIG_CONTENTS}")
+    string(REGEX REPLACE "CONFIG_MICRO_ROS_AGENT_IP=\"[^\"]*\"" "CONFIG_MICRO_ROS_AGENT_IP=\"${AGENT_IP}\"" SDKCONFIG_CONTENTS "${SDKCONFIG_CONTENTS}")
+    string(REGEX REPLACE "CONFIG_MICRO_ROS_AGENT_PORT=\"[^\"]*\"" "CONFIG_MICRO_ROS_AGENT_PORT=\"${AGENT_PORT}\"" SDKCONFIG_CONTENTS "${SDKCONFIG_CONTENTS}")
+    file(WRITE "${SDKCONFIG_FILE}" "${SDKCONFIG_CONTENTS}")
+    message(STATUS "✅ sdkconfig actualizado - WiFi: ${WIFI_SSID}, Agent: ${AGENT_IP}:${AGENT_PORT}")
+endif()
 
 # ============================================================================
 # SELECCIÓN DE VERSIÓN

@@ -10,8 +10,7 @@ set -euo pipefail
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DB_ENV="$REPO_DIR/database/.env"
 DB_ENV_EXAMPLE="$REPO_DIR/.env.example"
-WIFI_ENV="$REPO_DIR/microros-esp/main/.env"
-WIFI_ENV_TEMPLATE="$REPO_DIR/microros-esp/main/versions/wifi/.env"
+WIFI_ENV="$REPO_DIR/microros-esp/main/versions/wifi/.env"
 SENSOR_NODE="$REPO_DIR/database/ros_sensor_node.py"
 MOTOR_NODE="$REPO_DIR/microros-esp/main/Motores/motor_control_node.py"
 MICROROS_WS="${MICROROS_WS:-$HOME/microros_ws}"
@@ -40,6 +39,27 @@ source_ros() {
         warn "Ejecuta ./install.sh para instalarlo."
         return 1
     fi
+}
+
+# ─── Source ESP-IDF ───────────────────────────────────────────────────────────
+source_idf() {
+    local _candidates=(
+        "${IDF_PATH:-}/export.sh"
+        "$HOME/esp/esp-idf/export.sh"
+        "$HOME/esp/v5.5.2/esp-idf/export.sh"
+        "$HOME/esp/v5.4.1/esp-idf/export.sh"
+        "$HOME/esp/v5.3.2/esp-idf/export.sh"
+    )
+    for _f in "${_candidates[@]}"; do
+        if [[ -n "$_f" && -f "$_f" ]]; then
+            set +u; source "$_f" > /dev/null 2>&1; set -u
+            success "ESP-IDF cargado desde $(dirname "$_f")"
+            return 0
+        fi
+    done
+    warn "ESP-IDF no encontrado. Algunas funciones de flash pueden fallar."
+    warn "Ejecuta ./install.sh para instalarlo."
+    return 1
 }
 
 # ─── Header ───────────────────────────────────────────────────────────────────
@@ -87,7 +107,7 @@ edit_db_env() {
 edit_wifi_env() {
     echo ""
     echo -e "${BOLD}  Credenciales — WiFi / micro-ROS${RESET}"
-    echo -e "  Archivo: ${YELLOW}microros-esp/main/.env${RESET}"
+    echo -e "  Archivo: ${YELLOW}microros-esp/main/versions/wifi/.env${RESET}"
     echo ""
     echo -e "  Variables requeridas:"
     echo -e "    ${CYAN}WIFI_SSID${RESET}      — Nombre de la red WiFi"
@@ -105,26 +125,20 @@ edit_wifi_env() {
     echo ""
 
     if [[ ! -f "$WIFI_ENV" ]]; then
-        warn ".env de WiFi no encontrado."
-        if [[ -f "$WIFI_ENV_TEMPLATE" ]]; then
-            info "Creando desde plantilla..."
-            cp "$WIFI_ENV_TEMPLATE" "$WIFI_ENV"
-            success "Creado: microros-esp/main/.env"
-        else
-            # Crear plantilla mínima
-            cat > "$WIFI_ENV" <<EOF
+        warn ".env de WiFi no encontrado. Creando plantilla mínima..."
+        mkdir -p "$(dirname "$WIFI_ENV")"
+        cat > "$WIFI_ENV" <<EOF
 WIFI_SSID=TU_RED_WIFI
 WIFI_PASSWORD=TU_CONTRASEÑA
 AGENT_IP=${current_ip:-192.168.1.100}
 AGENT_PORT=8888
 EOF
-            success "Creado: microros-esp/main/.env (plantilla mínima)"
-        fi
+        success "Creado: microros-esp/main/versions/wifi/.env"
     fi
 
     ${EDITOR:-nano} "$WIFI_ENV"
     echo ""
-    success "Credenciales WiFi guardadas."
+    success "Credenciales WiFi guardadas en microros-esp/main/versions/wifi/.env"
     warn "Recuerda recompilar el firmware del ESP32 para aplicar los cambios."
     read -rp "  Presiona Enter para continuar..." _
 }
@@ -148,8 +162,6 @@ start_agent_only() {
     echo -e "${BOLD}  Iniciar micro-ROS Agent (UDP)${RESET}"
     echo ""
 
-    source_ros || { read -rp "  Presiona Enter para volver..." _; return; }
-
     local port
     port=$(get_agent_port)
 
@@ -160,7 +172,11 @@ start_agent_only() {
 
     info "Puerto: $port  |  Detener: Ctrl + C"
     echo ""
-    ros2 run micro_ros_agent micro_ros_agent udp4 --port "$port" || true
+    bash --norc --noprofile -c "
+        source /opt/ros/jazzy/setup.bash
+        source '$MICROROS_WS/install/setup.bash'
+        /opt/ros/jazzy/bin/ros2 run micro_ros_agent micro_ros_agent udp4 --port $port
+    " || true
 
     echo ""
     info "Agent detenido."
@@ -283,8 +299,8 @@ launch_esp32() {
             return
         fi
     fi
-    info "Activando entorno ROS 2 + micro-ROS..."
-    source_ros || { read -rp "  Presiona Enter para volver..." _; return; }
+    info "Activando entorno ESP-IDF (sin ROS para evitar conflictos en build)..."
+    source_idf
     "$script"
 }
 

@@ -48,6 +48,17 @@ ESP_IDF_VERSION="${ESP_IDF_VERSION:-v5.4.1}"
 ESP_IDF_DIR="$REAL_HOME/esp/esp-idf"
 
 # ==============================================================================
+# 0. Permisos de acceso a puertos serie (ESP32)
+# ==============================================================================
+if ! groups "$REAL_USER" | grep -qw dialout; then
+    info "Añadiendo $REAL_USER al grupo dialout (acceso a puertos serie)..."
+    usermod -aG dialout "$REAL_USER"
+    success "Usuario añadido al grupo dialout (requiere cerrar sesión para aplicar)."
+else
+    success "$REAL_USER ya pertenece al grupo dialout."
+fi
+
+# ==============================================================================
 # 1. Verificar Ubuntu 24.04
 # ==============================================================================
 header "1/7  Verificando sistema operativo"
@@ -98,6 +109,12 @@ else
     sudo apt-get install -y \
         ros-jazzy-ros-base \
         ros-jazzy-rmw-cyclonedds-cpp \
+        ros-jazzy-std-msgs \
+        ros-jazzy-ros2cli \
+        ros-jazzy-ros2run \
+        ros-jazzy-ros2topic \
+        ros-jazzy-rcl \
+        ros-jazzy-rclpy \
         python3-colcon-common-extensions \
         python3-rosdep
 
@@ -174,22 +191,39 @@ fi
 # ==============================================================================
 header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
 
-if [[ -f "$ESP_IDF_DIR/export.sh" ]]; then
+_idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1)
+if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
     success "ESP-IDF ya instalado en $ESP_IDF_DIR"
 else
     info "Instalando dependencias del sistema para ESP-IDF..."
     apt-get install -y --no-install-recommends \
         git wget flex bison gperf cmake ninja-build ccache \
-        libffi-dev libssl-dev dfu-util libusb-1.0-0
+        libffi-dev libssl-dev dfu-util libusb-1.0-0 \
+        python3-venv python3-pip
 
-    info "Clonando ESP-IDF $ESP_IDF_VERSION en $ESP_IDF_DIR ..."
-    mkdir -p "$REAL_HOME/esp"
-    sudo -u "$REAL_USER" git clone -b "$ESP_IDF_VERSION" --recursive \
-        https://github.com/espressif/esp-idf.git "$ESP_IDF_DIR"
-    chown -R "$REAL_USER:$REAL_USER" "$REAL_HOME/esp"
+    if [[ ! -f "$ESP_IDF_DIR/export.sh" ]]; then
+        info "Clonando ESP-IDF $ESP_IDF_VERSION en $ESP_IDF_DIR ..."
+        mkdir -p "$REAL_HOME/esp"
+        chown "$REAL_USER:$REAL_USER" "$REAL_HOME/esp"
+        sudo -u "$REAL_USER" git clone -b "$ESP_IDF_VERSION" --recursive \
+            https://github.com/espressif/esp-idf.git "$ESP_IDF_DIR"
+    else
+        info "Repositorio ESP-IDF ya clonado — completando instalación de herramientas..."
+    fi
 
     info "Ejecutando install.sh de ESP-IDF para esp32..."
     sudo -u "$REAL_USER" bash -c "cd '$ESP_IDF_DIR' && ./install.sh esp32"
+
+    info "Instalando paquetes Python requeridos por micro_ros_espidf_component..."
+    _idf_pip=$(ls "$REAL_HOME/.espressif/python_env"/idf*/bin/pip 2>/dev/null | head -1 || true)
+    if [[ -n "$_idf_pip" ]]; then
+        sudo -u "$REAL_USER" "$_idf_pip" install --quiet \
+            catkin_pkg empy lark colcon-common-extensions
+        success "Paquetes micro-ROS instalados en el venv de ESP-IDF."
+    else
+        warn "No se encontró pip en el venv de ESP-IDF. Instálalos manualmente:"
+        warn "  ~/.espressif/python_env/idf*/bin/pip install catkin_pkg empy lark colcon-common-extensions"
+    fi
 
     if ! grep -q "esp-idf/export.sh" "$REAL_HOME/.bashrc"; then
         echo ". $ESP_IDF_DIR/export.sh" >> "$REAL_HOME/.bashrc"
@@ -206,14 +240,16 @@ header "5/7  Instalando dependencias Python"
 # Usar pip con --break-system-packages (Ubuntu 24.04 PEP 668)
 PIP_FLAGS="--break-system-packages --quiet"
 
-info "Instalando pymongo, python-dotenv, certifi..."
+info "Instalando pymongo, python-dotenv, certifi, numpy, pyyaml..."
 pip3 install $PIP_FLAGS \
     "pymongo>=4.0.0" \
     "python-dotenv>=1.0.0" \
-    "certifi"
+    "certifi" \
+    "numpy>=1.24.0" \
+    "pyyaml>=6.0"
 
 # Verificar importaciones críticas
-python3 -c "import pymongo; import dotenv; import certifi" \
+python3 -c "import pymongo; import dotenv; import certifi; import numpy; import yaml" \
     && success "Dependencias Python verificadas." \
     || error "Falló la verificación de dependencias Python."
 
