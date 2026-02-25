@@ -2,10 +2,10 @@
 
 <div align="center">
 
-**Última actualización:** 20 de febrero de 2026
+**Última actualización:** 25 de febrero de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
-[![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
+[![ESP-IDF 5.4.1](https://img.shields.io/badge/ESP--IDF-5.4.1-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-WiFi%2FUDP-orange.svg)](https://micro.ros.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
@@ -112,8 +112,12 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
 
 ### Requisitos
 
-- Ubuntu **24.04** LTS (nativo)
+- **SO:** Ubuntu **24.04** LTS (nativo) o Raspberry Pi OS (Bookworm 64-bit)
+- **RAM:** Mínimo 2 GB (4 GB recomendado para compilación)
+- **Almacenamiento:** 8 GB libres
 - Conexión a internet
+
+> **Nota Raspberry Pi:** La instalación funciona en Raspberry Pi 4/5 con 2GB+ RAM. La compilación de micro-ROS puede tardar 30-60 minutos usando modo secuencial para evitar problemas de memoria.
 
 ### Pasos
 
@@ -129,9 +133,11 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
    ```
 
    El script se encarga de:
-   - Instalar **ROS 2 Jazzy** via apt
+   - Añadir el usuario al grupo **dialout** (acceso a puerto serie del ESP32)
+   - Instalar **ROS 2 Jazzy** via apt (incluye `std-msgs`, `ros2topic`, `rclpy`)
    - Compilar el **micro-ROS Agent** desde fuente con colcon (`~/microros_ws`)
-   - Instalar dependencias Python (`pymongo`, `python-dotenv`, `certifi`)
+   - Instalar **ESP-IDF v5.4.1** con paquetes Python para micro-ROS
+   - Instalar dependencias Python (`pymongo`, `python-dotenv`, `certifi`, `numpy`, `pyyaml`)
    - Configurar `database/.env` con las credenciales MongoDB
 
 3. ¡Listo! Usa el menú para operar el sistema:
@@ -151,7 +157,7 @@ Punto de entrada único para gestionar todo el sistema:
 
 | Opción | Acción |
 |---|---|
-| **1** | Modificar credenciales (MongoDB `database/.env` y WiFi `microros-esp/main/.env`) |
+| **1** | Modificar credenciales (MongoDB `database/.env` y WiFi `microros-esp/main/versions/wifi/.env`) |
 | **2** | Iniciar agentes (micro-ROS Agent UDP / nodo sensores → MongoDB / motores) |
 | **3** | ESP32 (compilar, flashear, monitor, Agent, calibración…) |
 | **0** | Salir |
@@ -220,18 +226,18 @@ python3 calibracion_ph.py
 4. Repetir para pH 6.86 y 9.18
 5. Presionar **Enter** → calcula regresión lineal → genera bloque para `config.h`
 
-**Calibración actual (2026-02-19):**
+**Calibración actual (2026-02-23):**
 
-| Buffer | Voltaje medido | Error |
+| Buffer | Voltaje medido | Notas |
 |---|---|---|
-| pH 4.01 | 915 mV | +0.012 |
-| pH 6.86 | 1713 mV | −0.028 |
-| pH 9.18 | 2342 mV | +0.016 |
+| pH 4.04 | 884 mV | Buffer estándar |
+| pH 6.90 | 1703 mV | Buffer neutro |
+| pH 9.23 | 2349 mV | Buffer alcalino |
 
 ```c
-// config.h — calibrado 2026-02-19, R² = 0.999912
-#define PH_SLOPE       0.003622
-#define PH_INTERCEPT   0.683614
+// config.h — calibrado 2026-02-23
+#define PH_SLOPE       0.003540
+#define PH_INTERCEPT   0.898120
 ```
 
 ---
@@ -253,14 +259,15 @@ sensores/
 │       └── crear_colecciones.py
 │
 ├── microros-esp/                  ← Firmware ESP32 + herramientas PC
-│   ├── CMakeLists.txt
+│   ├── CMakeLists.txt             ← Auto-genera wifi_config.h desde .env
 │   ├── main/
-│   │   ├── .env                   ← ★ SSID, password, IP del Agent
+│   │   ├── versions/wifi/
+│   │   │   └── .env               ← ★ SSID, password, AGENT_IP, AGENT_PORT
 │   │   ├── Motores/
 │   │   │   └── motor_control_node.py  ← Nodo ROS 2 control de motores
 │   │   └── [fuentes C del firmware]
 │   └── scripts/
-│       ├── microros.sh            ← Submenú ESP32 completo
+│       ├── microros.sh            ← Submenú ESP32 (auto-genera sdkconfig)
 │       └── utils/
 │           └── calibracion_ph.py  ← Herramienta calibración + numpy
 │
@@ -276,8 +283,8 @@ sensores/
 |---|---|---|
 | `ADC_PH_CHANNEL` | `ADC_CHANNEL_0` (GPIO36) | Canal ADC sensor pH |
 | `ADC_TEMP_CHANNEL` | `ADC_CHANNEL_3` (GPIO39) | Canal ADC temperatura |
-| `PH_SLOPE` | `0.003622` | Pendiente regresión pH |
-| `PH_INTERCEPT` | `0.683614` | Intercepto regresión pH |
+| `PH_SLOPE` | `0.003540` | Pendiente regresión pH (cal. 2026-02-23) |
+| `PH_INTERCEPT` | `0.898120` | Intercepto regresión pH (cal. 2026-02-23) |
 | `TEMP_OFFSET_CAL` | `-0.7` | Offset calibración temperatura |
 | `PUBLISH_INTERVAL_MS` | `4000` | Publicación cada 4 segundos |
 | `MOTOR_IN1_PIN` | `GPIO25` | PWM motor izquierda |
@@ -286,6 +293,41 @@ sensores/
 ---
 
 ## 🐛 Troubleshooting
+
+### ❌ Falla compilación de micro-ROS Agent (Raspberry Pi)
+
+**Síntoma:** Error `micro_ros_msgs` falla al compilar durante `./install.sh`
+
+**Solución:**
+
+1. **Limpiar workspace y reinstalar dependencias:**
+   ```bash
+   rm -rf ~/microros_ws/build ~/microros_ws/install
+   sudo apt-get install -y python3-dev python3-setuptools build-essential
+   ```
+
+2. **Re-ejecutar instalador (ahora usa compilación secuencial):**
+   ```bash
+   sudo ./install.sh
+   ```
+
+3. **Si persiste el error, compilar manualmente con más verbosidad:**
+   ```bash
+   cd ~/microros_ws
+   source /opt/ros/jazzy/setup.bash
+   rosdep install --from-paths src --ignore-src -y
+   colcon build --symlink-install --executor sequential --parallel-workers 1 --event-handlers console_direct+
+   ```
+
+4. **Revisar logs específicos:**
+   ```bash
+   cat ~/microros_ws/log/latest_build/micro_ros_msgs/stderr.log
+   ```
+
+**Causas comunes:**
+- Memoria insuficiente en Raspberry Pi (compilación paralela)
+- Dependencias Python faltantes (`python3-dev`, `setuptools`)
+- Versión incompatible de colcon o setuptools
 
 ### ❌ `rclpy._rclpy_pybind11` no importa (conflicto conda)
 
@@ -299,21 +341,24 @@ source ~/microros_ws/install/setup.bash
 python3 database/ros_sensor_node.py
 ```
 
-### ❌ ESP-IDF falla con Python 3.13
+### ❌ ESP-IDF falla con Python 3.13 (o conflictos de colcon)
+
+El script `microros.sh` ahora limpia automáticamente las variables de entorno ROS antes de compilar para evitar conflictos entre el colcon de ROS 2 y el colcon interno de micro_ros_espidf_component. Si aún así falla:
 
 ```bash
 conda deactivate && conda deactivate
 rm -rf "microros-esp/build"
-source ~/esp/v5.5.2/esp-idf/export.sh
+source ~/esp/esp-idf/export.sh
 idf.py build
 ```
 
 ### ❌ ESP32 no conecta al Agent WiFi
 
-1. Verificar que `AGENT_IP` en `microros-esp/main/.env` es la IP real del PC
+1. Verificar que `AGENT_IP` en `microros-esp/main/versions/wifi/.env` es la IP real del PC
 2. Desde el menú: **3 → "Mostrar IP"** muestra la IP actual
 3. Firewall: `sudo ufw allow 8888/udp`
 4. Verificar en monitor serial que el ESP32 obtuvo IP
+5. **Importante**: Recompilar después de cambiar `.env` (el script `microros.sh` auto-genera `sdkconfig.defaults`)
 
 ### ❌ No aparecen tópicos en ROS 2
 
@@ -325,10 +370,37 @@ ros2 topic list
 
 ### ❌ Permiso denegado en `/dev/ttyUSB0`
 
+El instalador (`install.sh`) ya añade el usuario al grupo `dialout`. Si aún falla:
+
 ```bash
 sudo usermod -a -G dialout $USER
+# Cerrar sesión y volver a entrar, o:
 newgrp dialout
 ```
+
+---
+
+## 🔧 Mejoras Técnicas Recientes
+
+### Instalador (`install.sh`)
+- ✅ **Grupo dialout automático**: Añade el usuario al grupo para acceso serie del ESP32
+- ✅ **Detección inteligente ESP-IDF**: Verifica tanto el repositorio como el entorno Python
+- ✅ **Paquetes micro-ROS en venv IDF**: Instala automáticamente `catkin_pkg`, `empy`, `lark`, `colcon-common-extensions`
+- ✅ **Dependencias ROS 2 completas**: Incluye `std-msgs`, `ros2topic`, `ros2cli` para debugging
+- ✅ **Python científico**: Instala `numpy` (para calibración) y `pyyaml` (herramientas ROS)
+- ✅ **Soporte Raspberry Pi**: Compilación secuencial optimizada para ARM con manejo de errores robusto
+- ✅ **Resolución automática dependencias**: Ejecuta `rosdep` antes de compilar micro-ROS
+
+### Build ESP32 (`microros.sh` + `CMakeLists.txt`)
+- ✅ **Auto-generación de credenciales**: `CMakeLists.txt` lee `.env` y genera `wifi_config.h` automáticamente
+- ✅ **Sincronización sdkconfig**: `microros.sh` genera `sdkconfig.defaults` desde `.env` antes de compilar
+- ✅ **Limpieza de entorno**: Desactiva variables ROS durante build para evitar conflictos colcon
+- ✅ **Detección automática puerto**: Busca `/dev/ttyUSB*` y `/dev/ttyACM*` automáticamente
+
+### Sistema de menú (`menu.sh`)
+- ✅ **Source ESP-IDF inteligente**: Busca en múltiples ubicaciones (`IDF_PATH`, `~/esp/esp-idf`, versiones específicas)
+- ✅ **Subshells limpios**: Ejecuta agentes ROS en `bash --norc --noprofile` para evitar conflictos conda
+- ✅ **Rutas corregidas**: WiFi `.env` en `microros-esp/main/versions/wifi/.env` (no en `main/.env`)
 
 ---
 
@@ -342,8 +414,9 @@ newgrp dialout
 - [x] Herramienta calibración pH con regresión numpy
 - [x] Soporte múltiples ESP32 simultáneos
 - [x] Instalación automática con `install.sh` (ROS 2 + micro-ROS Agent + Python)
-- [x] Menú unificado `menu.sh` (credenciales, agentes, ESP32)
-- [ ] Alertas automáticas por valores fuera de rango
+- [x] Menú unificado `menu.sh` (credenciales, agentes, ESP32)- [x] Auto-configuración permisos serie (grupo dialout)
+- [x] Auto-generación credenciales WiFi desde .env (sin reconfigurar manualmente)
+- [x] Detección y limpieza de conflictos Python/colcon en build- [ ] Alertas automáticas por valores fuera de rango
 - [ ] OTA updates para firmware ESP32
 - [ ] Panel de control motores en Dashboard
 - [ ] Exportación automática periódica a JSON

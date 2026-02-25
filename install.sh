@@ -149,16 +149,30 @@ if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
         success "micro-ROS Agent ya instalado en $MICROROS_WS"
     else
         warn "Workspace existe pero el Agent no está disponible — recompilando..."
-        sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && colcon build --symlink-install" 2>&1 | tail -5
-        set +u; source "$MICROROS_WS/install/setup.bash"; set -u
-        success "micro-ROS Agent recompilado."
+        info "Resolviendo dependencias con rosdep..."
+        sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && rosdep install --from-paths src --ignore-src -y" || true
+        
+        info "Compilando con modo secuencial (optimizado para Raspberry Pi)..."
+        if sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && colcon build --symlink-install --executor sequential --parallel-workers 1"; then
+            set +u; source "$MICROROS_WS/install/setup.bash"; set -u
+            success "micro-ROS Agent recompilado exitosamente."
+        else
+            error "Falló la recompilación del micro-ROS Agent."
+            error "Revisa los logs en $MICROROS_WS/log/latest_build/"
+            warn "Intenta: rm -rf $MICROROS_WS/build/* y ejecuta de nuevo ./install.sh"
+            exit 1
+        fi
     fi
 else
     info "Instalando dependencias de compilación..."
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends \
         python3-pip \
-        ros-dev-tools
+        python3-dev \
+        python3-setuptools \
+        python3-colcon-common-extensions \
+        ros-dev-tools \
+        build-essential
 
     info "Creando workspace en $MICROROS_WS ..."
     mkdir -p "$MICROROS_WS/src"
@@ -169,9 +183,24 @@ else
     sudo -u "$REAL_USER" git clone -b jazzy https://github.com/micro-ROS/micro_ros_msgs.git
     sudo -u "$REAL_USER" git clone -b jazzy https://github.com/micro-ROS/micro-ROS-Agent.git
 
-    info "Compilando (puede tardar 5-15 minutos)..."
     cd "$MICROROS_WS"
-    sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && colcon build --symlink-install"
+    
+    info "Resolviendo dependencias con rosdep..."
+    sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && rosdep install --from-paths src --ignore-src -y" || true
+    
+    info "Compilando (puede tardar 5-15 minutos en Raspberry Pi)..."
+    info "Usando compilación secuencial para evitar problemas de memoria..."
+    
+    # Compilar con flags optimizados para ARM/Raspberry Pi
+    if sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && colcon build --symlink-install --executor sequential --parallel-workers 1"; then
+        success "micro-ROS Agent compilado exitosamente."
+    else
+        error "Falló la compilación del micro-ROS Agent."
+        error "Revisa los logs en $MICROROS_WS/log/latest_build/"
+        error "Logs de stderr en: $MICROROS_WS/log/latest_build/micro_ros_msgs/stderr.log"
+        popd > /dev/null
+        exit 1
+    fi
 
     popd > /dev/null
 
