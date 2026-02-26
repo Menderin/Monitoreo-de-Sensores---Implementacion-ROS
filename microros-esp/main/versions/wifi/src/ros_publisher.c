@@ -76,12 +76,15 @@ static rosidl_runtime_c__float__Sequence data_sequence = {
 static bool initialized = false;
 
 /**
- * Opciones RMW persistidas para poder pasarlas al ping con la
- * dirección UDP correcta del Agente (IP + puerto).
- * Se inicializan una sola vez en ros_publisher_init().
+ * IP y puerto del Agente persistidos como strings.
+ * Son inmutables una vez configurados y nunca quedan obsoletos
+ * (a diferencia de un rmw_init_options_t copiado por valor, cuyos
+ * punteros internos se invalidan tras cada rclc_support_fini).
  */
-static rmw_init_options_t s_rmw_options;
-static bool               s_rmw_options_ready = false;
+static char s_agent_ip[64]  = {0};
+static char s_agent_port[8] = {0};
+static bool s_rmw_options_ready = false;
+
 
 // ========================================
 // FUNCIONES PRIVADAS — UTILIDADES
@@ -208,9 +211,11 @@ static bool ros_entities_create(void)
     rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
     RCCHECK(rcl_init_options_init(&init_options, allocator));
 
-    // Copiar las rmw_options ya configuradas (contienen IP + puerto)
+    // Construir rmw_options FRESCAS desde las strings persistidas.
+    // CRÍTICO: NO copiar un rmw_init_options_t por valor; sus punteros
+    // internos quedan obsoletos tras rclc_support_fini → RC=1 en el 2° create.
     rmw_init_options_t *rmw_options_ptr = rcl_init_options_get_rmw_init_options(&init_options);
-    *rmw_options_ptr = s_rmw_options;
+    RCCHECK(rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port, rmw_options_ptr));
 
     RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
 
@@ -295,9 +300,9 @@ bool ros_publisher_init(void)
         rmw_options));
     ESP_LOGI(TAG, "Transporte UDP configurado");
 
-    // Persistir rmw_options para uso posterior en el ping de resiliencia.
-    // CRÍTICO: deben contener la IP y puerto UDP del Agente.
-    s_rmw_options       = *rmw_options;
+    // Persistir IP y puerto como strings (seguro ante cualquier fini posterior).
+    strncpy(s_agent_ip,   CONFIG_MICRO_ROS_AGENT_IP,   sizeof(s_agent_ip)   - 1);
+    strncpy(s_agent_port, CONFIG_MICRO_ROS_AGENT_PORT, sizeof(s_agent_port) - 1);
     s_rmw_options_ready = true;
 #endif
     
@@ -451,58 +456,71 @@ void ros_publisher_deinit(void)
 
 bool ros_agent_check_and_reconnect(void)
 {
-    if (!initialized || !s_rmw_options_ready) {
-        ESP_LOGW(TAG, "[Resilience] Sistema ROS no listo para chequeo de Agente.");
+    // Sin IP/puerto configurados no hay nada que hacer.
+    if (!s_rmw_options_ready) {
+        ESP_LOGW(TAG, "[Resilience] IP/puerto del Agente no configurados.");
         return false;
     }
 
-    // ── FASE 1: Ping con reintentos ───────────────────────────────
-    bool agent_alive = false;
-    for (int attempt = 1; attempt <= ROS_AGENT_MAX_RETRIES; attempt++) {
-        // rmw_uros_ping_agent_options(timeout_ms, attempts, rmw_options)
-        // Se pasan las rmw_options para incluir la dirección UDP del Agente.
-        rmw_ret_t ping_ret = rmw_uros_ping_agent_options(
-            (int)ROS_AGENT_PING_TIMEOUT_MS,
-            1,                // Un solo intento por llamada; reintento gestionado aquí
-            &s_rmw_options);
+    if (initialized) {
+        // ── FASE 1: Ping con reintentos ───────────────────────────────────────
+        // Opciones temporales FRESCAS por cada ping: se llama
+        // rmw_uros_options_set_udp_address desde las strings persistidas,
+        // evitando punteros internos obsoletos de ciclos destroy previos.
+        bool agent_alive = false;
+        for (int attempt = 1; attempt <= ROS_AGENT_MAX_RETRIES; attempt++) {
+            rmw_ret_t ping_ret = RMW_RET_ERROR;
 
-        if (ping_ret == RMW_RET_OK) {
-            agent_alive = true;
-            break;
+            rcl_init_options_t ping_opts = rcl_get_zero_initialized_init_options();
+            if (rcl_init_options_init(&ping_opts, allocator) == RCL_RET_OK) {
+                rmw_init_options_t *ping_rmw = rcl_init_options_get_rmw_init_options(&ping_opts);
+                if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port,
+                                                     ping_rmw) == RCL_RET_OK) {
+                    ping_ret = rmw_uros_ping_agent_options(
+                        (int)ROS_AGENT_PING_TIMEOUT_MS, 1, ping_rmw);
+                }
+                rcl_init_options_fini(&ping_opts);
+            }
+
+            if (ping_ret == RMW_RET_OK) {
+                agent_alive = true;
+                break;
+            }
+
+            ESP_LOGW(TAG, "[Resilience] Ping al Agente fallido (intento %d/%d). "
+                          "Esperando %u ms...",
+                     attempt, ROS_AGENT_MAX_RETRIES,
+                     (unsigned)ROS_AGENT_RETRY_DELAY_MS);
+            vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_RETRY_DELAY_MS));
         }
 
-        ESP_LOGW(TAG, "[Resilience] Ping al Agente fallido (intento %d/%d). "
-                      "Esperando %u ms...",
-                 attempt, ROS_AGENT_MAX_RETRIES,
-                 (unsigned)ROS_AGENT_RETRY_DELAY_MS);
-        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_RETRY_DELAY_MS));
+        if (agent_alive) {
+            return true;  // Sesión activa, nada que hacer.
+        }
+
+        // ── FASE 2a: Sesión muerta → Destruir en orden inverso ────────────────
+        ESP_LOGW(TAG, "[Resilience] Sesión con el Agente perdida tras %d intentos. "
+                      "Ejecutando hot-reload...",
+                 ROS_AGENT_MAX_RETRIES);
+        ros_entities_destroy();  // initialized = false al salir
+
+        ESP_LOGI(TAG, "[Resilience] Pausa de seguridad (%u ms)...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
+
+    } else {
+        // initialized == false: create falló en ciclo anterior.
+        // Reintentamos el create directamente (destrucción ya fue hecha).
+        ESP_LOGI(TAG, "[Resilience] Reintentando create (esperando al Agente)...");
     }
 
-    if (agent_alive) {
-        // El Agente está vivo: sesión activa, nada que hacer.
-        return true;
-    }
-
-    // ── FASE 2: Hot-Reload ────────────────────────────────────────
-    ESP_LOGW(TAG, "[Resilience] Sesión con el Agente perdida tras %d intentos. "
-                  "Ejecutando hot-reload...",
-             ROS_AGENT_MAX_RETRIES);
-
-    // 2a. Destruir entidades en orden inverso (sin free de buffers estáticos)
-    ros_entities_destroy();
-
-    // 2b. Pausa de seguridad para que el middleware libere recursos internos
-    ESP_LOGI(TAG, "[Resilience] Pausa de seguridad (%u ms)...",
-             (unsigned)ROS_AGENT_REINIT_DELAY_MS);
-    vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
-
-    // 2c. Recrear todas las entidades reutilizando buffers estáticos
+    // ── FASE 2b / Reintento directo: Recrear entidades ───────────────────────
     if (!ros_entities_create()) {
-        ESP_LOGE(TAG, "[Resilience] Hot-reload FALLÓ. "
-                      "Se reintentará en el próximo ciclo.");
+        ESP_LOGE(TAG, "[Resilience] Hot-reload FALLÓ. Se reintentará en el próximo ciclo.");
         return false;
     }
 
     ESP_LOGI(TAG, "[Resilience] Hot-reload EXITOSO. Sistema ROS operativo.");
     return true;
 }
+
