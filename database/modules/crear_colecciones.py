@@ -108,18 +108,8 @@ def insertar_dispositivo_ejemplo(db):
     dispositivo = {
         "_id": "esp32_default",
         "nombre": "Dispositivo de Prueba",
-        "estado": "pendiente",
         "auto_registrado": False,
         "ubicacion": None,
-        "configuracion": {
-            "firmware_version": "1.0.0",
-            "intervalo_lectura_seg": 60,
-            "sensores_habilitados": ["ph", "temperatura"]
-        },
-        "calibracion": {
-            "ph_offset": 0.0,
-            "temp_offset": 0.0
-        },
         "unidades": {
             "temperatura": "°C",
             "ph": "pH"

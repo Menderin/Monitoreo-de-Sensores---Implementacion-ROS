@@ -159,18 +159,8 @@ class SensorDBService:
         dispositivo = {
             "_id": dispositivo_id,
             "nombre": nombre or f"Dispositivo {dispositivo_id[-8:]}",
-            "estado": "pendiente" if auto_registrado else "activo",
             "auto_registrado": auto_registrado,
             "ubicacion": None,
-            "configuracion": {
-                "firmware_version": "desconocido",
-                "intervalo_lectura_seg": 60,
-                "sensores_habilitados": ["ph", "temperatura"]
-            },
-            "calibracion": {
-                "ph_offset": 0.0,
-                "temp_offset": 0.0
-            },
             "unidades": {
                 "temperatura": "°C",
                 "ph": "pH"
