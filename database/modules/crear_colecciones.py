@@ -110,6 +110,12 @@ def insertar_dispositivo_ejemplo(db):
         "nombre": "Dispositivo de Prueba",
         "auto_registrado": False,
         "ubicacion": None,
+        "umbrales": {
+            "ph_min": 6.0,
+            "ph_max": 11.0,
+            "temp_min": 15.0,
+            "temp_max": 30.0
+        },
         "unidades": {
             "temperatura": "°C",
             "ph": "pH"

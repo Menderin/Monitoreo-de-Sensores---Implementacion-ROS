@@ -161,6 +161,12 @@ class SensorDBService:
             "nombre": nombre or f"Dispositivo {dispositivo_id[-8:]}",
             "auto_registrado": auto_registrado,
             "ubicacion": None,
+            "umbrales": {
+                "ph_min": 6.0,
+                "ph_max": 11.0,
+                "temp_min": 15.0,
+                "temp_max": 30.0
+            },
             "unidades": {
                 "temperatura": "°C",
                 "ph": "pH"
