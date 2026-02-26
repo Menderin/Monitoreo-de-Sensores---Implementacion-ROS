@@ -34,12 +34,14 @@ void micro_ros_task(void *arg)
 {
     ESP_LOGI(TAG, "Iniciando tarea micro-ROS...");
     
-    // Inicializar micro-ROS y crear publicadores
-    if (!ros_publisher_init()) {
-        ESP_LOGE(TAG, "Error al inicializar ROS publisher");
-        vTaskDelete(NULL);
-        return;
+    // Inicializar micro-ROS (espera activamente al Agente internamente).
+    // El bucle aquí es solo red de seguridad ante fallos post-handshake.
+    while (!ros_publisher_init()) {
+        ESP_LOGW(TAG, "[Boot] ROS init fallido (fallo interno). Reintentando en %d ms...",
+                 ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
     }
+
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  PUBLICANDO DATOS DE SENSORES");

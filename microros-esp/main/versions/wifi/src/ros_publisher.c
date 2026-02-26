@@ -208,16 +208,32 @@ static bool ros_entities_create(void)
     ESP_LOGI(TAG, "HEAP libre antes de crear entidades: %lu bytes", esp_get_free_heap_size());
 
     // ── Soporte ────────────────────────────────────────────────────
+    // Se usa manejo manual (no RCCHECK) para garantizar limpieza correcta
+    // de init_options y del struct support en cualquier ruta de error.
+    // Sin esto, un fallo en rclc_support_init_with_options deja el struct
+    // support en estado corrupto y el segundo intento falla INMEDIATAMENTE.
     rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
-    RCCHECK(rcl_init_options_init(&init_options, allocator));
+    if (rcl_init_options_init(&init_options, allocator) != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rcl_init_options_init falló");
+        return false;
+    }
 
     // Construir rmw_options FRESCAS desde las strings persistidas.
-    // CRÍTICO: NO copiar un rmw_init_options_t por valor; sus punteros
-    // internos quedan obsoletos tras rclc_support_fini → RC=1 en el 2° create.
     rmw_init_options_t *rmw_options_ptr = rcl_init_options_get_rmw_init_options(&init_options);
-    RCCHECK(rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port, rmw_options_ptr));
+    if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port, rmw_options_ptr) != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] udp_address config falló");
+        rcl_init_options_fini(&init_options);
+        return false;
+    }
 
-    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
+    rcl_ret_t support_rc =
+        rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator);
+    rcl_init_options_fini(&init_options);  // limpiar siempre (éxito o fallo)
+    if (support_rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_support_init_with_options falló: %d", (int)support_rc);
+        RCSOFTCHECK(rclc_support_fini(&support));  // limpiar estado interno corrupto
+        return false;
+    }
 
     // ── Nodo ───────────────────────────────────────────────────────
     char node_name[32];
@@ -305,15 +321,39 @@ bool ros_publisher_init(void)
     strncpy(s_agent_port, CONFIG_MICRO_ROS_AGENT_PORT, sizeof(s_agent_port) - 1);
     s_rmw_options_ready = true;
 #endif
-    
-    // Crear soporte y establecer conexión
+
+    // ── Espera activa al Agente ANTES del handshake XRCE-DDS ───────
+    // Evita el bloqueo de 10 s (timeout interno del middleware) y que
+    // la tarea muera si el Agente aún no está corriendo al arrancar.
+    ESP_LOGI(TAG, "Esperando al Agente en %s:%s ...", s_agent_ip, s_agent_port);
+    for (;;) {
+        bool agent_up = false;
+        rcl_init_options_t ping_opts = rcl_get_zero_initialized_init_options();
+        if (rcl_init_options_init(&ping_opts, allocator) == RCL_RET_OK) {
+            rmw_init_options_t *ping_rmw = rcl_init_options_get_rmw_init_options(&ping_opts);
+            if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port,
+                                                 ping_rmw) == RCL_RET_OK) {
+                agent_up = (rmw_uros_ping_agent_options(
+                    (int)ROS_AGENT_PING_TIMEOUT_MS, 1, ping_rmw) == RMW_RET_OK);
+            }
+            rcl_init_options_fini(&ping_opts);
+        }
+        if (agent_up) {
+            ESP_LOGI(TAG, "Agente disponible. Iniciando handshake XRCE-DDS...");
+            break;
+        }
+        ESP_LOGW(TAG, "Agente no disponible. Reintentando en %u ms...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
+    }
+
+    // Conectar con el Agente (handshake XRCE-DDS)
     ESP_LOGI(TAG, "Conectando con micro-ROS Agent...");
-    ESP_LOGI(TAG, "Ejecuta en el PC:");
-    ESP_LOGI(TAG, "  ros2 run micro_ros_agent micro_ros_agent udp4 --port %s", 
+    ESP_LOGI(TAG, "  ros2 run micro_ros_agent micro_ros_agent udp4 --port %s",
              CONFIG_MICRO_ROS_AGENT_PORT);
-    
+
     RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
-    
+
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  CONECTADO A MICRO-ROS AGENT!");
     ESP_LOGI(TAG, "========================================");
@@ -510,8 +550,11 @@ bool ros_agent_check_and_reconnect(void)
 
     } else {
         // initialized == false: create falló en ciclo anterior.
-        // Reintentamos el create directamente (destrucción ya fue hecha).
-        ESP_LOGI(TAG, "[Resilience] Reintentando create (esperando al Agente)...");
+        // Esperar antes de reintentar para dar tiempo al Agente de levantarse
+        // y evitar un bucle tight que no da tiempo al middleware de recuperarse.
+        ESP_LOGI(TAG, "[Resilience] Esperando %u ms antes de reintentar create...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
     }
 
     // ── FASE 2b / Reintento directo: Recrear entidades ───────────────────────
