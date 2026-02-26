@@ -50,8 +50,10 @@
 
 // pH: calibrado 2026-02-23
 // Buffers: pH 4.04→884mV, pH 6.90→1703mV, pH 9.23→2349mV
-#define PH_SLOPE       0.003540                             
-#define PH_INTERCEPT   0.898120    
+//#define PH_SLOPE       0.003540                             
+//#define PH_INTERCEPT   0.898120
+#define PH_SLOPE       0.003628                             
+#define PH_INTERCEPT   0.826715        
 
 
 // ========================================
@@ -81,27 +83,30 @@
 #define TOPIC_MOTOR_CMD         "motor_commands"
 
 // ========================================
-// CONFIGURACIÓN DE MOTOR DC - Driver MINI 298
+// CONFIGURACIÓN DE MOTOR DC - Driver L298N
 // ========================================
 
-// Pines GPIO para driver MINI 298 (con PWM directo en IN1/IN2)
-#define MOTOR_IN1_PIN    GPIO_NUM_25  // PWM dirección izquierda
-#define MOTOR_IN2_PIN    GPIO_NUM_26  // PWM dirección derecha
+// Pines GPIO para L298N
+// ENA  → D14 (GPIO14): PWM velocidad
+// IN1  → D27 (GPIO27): dirección izquierda (digital)
+// IN2  → D26 (GPIO26): dirección derecha  (digital)
+#define MOTOR_ENA_PIN    GPIO_NUM_14  // PWM - velocidad
+#define MOTOR_IN1_PIN    GPIO_NUM_27  // Digital - dirección izquierda
+#define MOTOR_IN2_PIN    GPIO_NUM_26  // Digital - dirección derecha
 
-// Configuración PWM para control de velocidad
+// Configuración PWM para ENA (velocidad)
 #define MOTOR_PWM_FREQ       1000           // 1 KHz
 #define MOTOR_PWM_TIMER      LEDC_TIMER_0
 #define MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
 #define MOTOR_PWM_RESOLUTION LEDC_TIMER_8_BIT  // 0-255
 
-// Canales PWM (uno para cada pin)
-#define MOTOR_IN1_CHANNEL    LEDC_CHANNEL_0
-#define MOTOR_IN2_CHANNEL    LEDC_CHANNEL_1
+// Canal PWM (solo ENA necesita PWM)
+#define MOTOR_ENA_CHANNEL    LEDC_CHANNEL_0
 
-// Niveles de velocidad (duty cycle)
-#define MOTOR_SPEED_SLOW     102  // 40% (~40% velocidad)
-#define MOTOR_SPEED_MEDIUM   178  // 70% (~70% velocidad)
-#define MOTOR_SPEED_FAST     255  // 100% (velocidad máxima)
+// Niveles de velocidad (duty cycle en ENA)
+#define MOTOR_SPEED_SLOW     102  // ~40%
+#define MOTOR_SPEED_MEDIUM   178  // ~70%
+#define MOTOR_SPEED_FAST     255  // 100%
 
 // Velocidad por defecto
 #define MOTOR_SPEED_DEFAULT  MOTOR_SPEED_FAST
