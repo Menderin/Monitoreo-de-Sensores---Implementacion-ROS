@@ -2,13 +2,14 @@
 
 <div align="center">
 
-**Última actualización:** 19 de febrero de 2026
+**Última actualización:** 25 de febrero de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
-[![ESP-IDF 5.5.2](https://img.shields.io/badge/ESP--IDF-5.5.2-green.svg)](https://docs.espressif.com/projects/esp-idf/)
+[![ESP-IDF 5.4.1](https://img.shields.io/badge/ESP--IDF-5.4.1-green.svg)](https://docs.espressif.com/projects/esp-idf/)
 [![micro-ROS](https://img.shields.io/badge/micro--ROS-WiFi%2FUDP-orange.svg)](https://micro.ros.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green.svg)](https://www.mongodb.com/cloud/atlas)
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420.svg)](https://ubuntu.com/)
 
 **Sistema IoT de monitoreo ambiental: ESP32 + ROS 2 + micro-ROS (WiFi/UDP) + MongoDB**
 
@@ -28,9 +29,8 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 - 🔧 **Identificación por MAC** — cada ESP32 tiene ID único en la red
 - 🏠 **Control de motor DC** — suscriptor ROS 2 para comandos STOP/LEFT/RIGHT/SPEED
 - ☁️ **MongoDB Atlas** — almacenamiento automático con timestamps
-- 📈 **Dashboard Streamlit** — visualización en tiempo real con autenticación
-- 🧪 **Herramienta de calibración pH** — captura medianas y calcula regresión lineal con numpy
-- 📡 **Filtrado de ruido ADC** — mediana de 10 muestras por lectura
+- 📈 **Dashboard Streamlit** — desplegado en Streamlit Cloud
+- 🎛️ **Menú unificado** — `menu.sh` como punto de entrada para configurar y operar
 
 ---
 
@@ -50,26 +50,22 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 │  [0]=temp [1]=pH [2]=voltage_raw [3]=mac1 [4]=mac2                  │
 │                                                                      │
 │  GPIO25/26 ──► Motor DC (LEDC PWM)  ◄── /motor_commands (String)    │
-└─────────────────────────── WiFi/UDP ────────────────────────────────┘
+└─────────────────────── WiFi/UDP ────────────────────────────────────┘
                                   │
-                    ┌─────────────▼──────────────┐
-                    │    micro-ROS Agent (PC)     │
-                    │  UDP port 8888              │
-                    └─────────────┬──────────────┘
-                                  │ DDS
-                    ┌─────────────▼──────────────┐
-                    │      ROS 2 Jazzy (PC)       │
-                    │                             │
-                    │  ros_sensor_node.py         │
-                    │  ├── Parsea Float32MultiArray│
-                    │  ├── Identifica ESP32 por MAC│
-                    │  └── Guarda en MongoDB Atlas │
-                    └─────────────┬──────────────┘
+              ┌───────────────────▼────────────────────┐
+              │              PC — nativo               │
+              │  micro_ros_agent UDP/8888               │
+              │         │ DDS (FastRTPS)                │
+              │  ros_sensor_node.py                     │
+              │  ├── Parsea Float32MultiArray           │
+              │  ├── Identifica ESP32 por MAC           │
+              │  └── Guarda en MongoDB Atlas            │
+              └────────────────────────────────────────┘
                                   │
-                    ┌─────────────▼──────────────┐
-                    │    Dashboard Streamlit      │
-                    │    (visualización + auth)   │
-                    └────────────────────────────┘
+              ┌───────────────────▼────────────────────┐
+              │    Dashboard Streamlit Cloud            │
+              │    (visualización + autenticación)      │
+              └────────────────────────────────────────┘
 ```
 
 ### Topics ROS 2
@@ -78,16 +74,6 @@ Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y tempera
 |---|---|---|---|
 | `/sensor_data` | `Float32MultiArray` | ESP32 → PC | Todos los datos del sensor + MAC |
 | `/motor_commands` | `String` | PC → ESP32 | Comandos: LEFT, RIGHT, STOP, SPEED_SET_XX |
-
-### Formato del mensaje `/sensor_data`
-
-```
-data[0] = temperatura (°C)
-data[1] = pH (calibrado)
-data[2] = voltage_raw_ph (mV)   ← usado para recalibración
-data[3] = MAC[0:2] como float   ← identificador único ESP32
-data[4] = MAC[3:5] como float
-```
 
 ---
 
@@ -122,178 +108,136 @@ IN2         ◄────────  GPIO26  (PWM - dirección derecha)
 
 ---
 
-## 🛠️ Instalación
+## 🛠️ Instalación en una PC nueva
 
-### 1. Prerrequisitos del sistema
+### Requisitos
 
-```bash
-# Ubuntu 24.04 LTS recomendado
-# Python 3.12 (del sistema, NO usar conda/venv para ROS/ESP-IDF)
-```
+- **SO:** Ubuntu **24.04** LTS (nativo) o Raspberry Pi OS (Bookworm 64-bit)
+- **RAM:** Mínimo 2 GB (4 GB recomendado para compilación)
+- **Almacenamiento:** 8 GB libres
+- Conexión a internet
 
-### 2. Instalar ROS 2 Jazzy
+> **Nota Raspberry Pi:** La instalación funciona en Raspberry Pi 4/5 con 2GB+ RAM. La compilación de micro-ROS puede tardar 30-60 minutos usando modo secuencial para evitar problemas de memoria.
 
-```bash
-# Configurar repositorios
-sudo apt install -y software-properties-common curl
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-     -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-     http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
-     | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+### Pasos
 
-# Instalar
-sudo apt update && sudo apt install -y ros-jazzy-desktop
+1. Clona el repositorio:
+   ```bash
+   git clone https://github.com/Menderin/Monitoreo-de-Sensores---Implementacion-ROS.git
+   cd Monitoreo-de-Sensores---Implementacion-ROS
+   ```
 
-# Activar en sesión
-source /opt/ros/jazzy/setup.bash
-```
+2. Ejecuta el instalador:
+   ```bash
+   chmod +x install.sh && sudo ./install.sh
+   ```
 
-### 3. Instalar micro-ROS Agent
+   El script se encarga de:
+   - Añadir el usuario al grupo **dialout** (acceso a puerto serie del ESP32)
+   - Instalar **ROS 2 Jazzy** via apt (incluye `std-msgs`, `ros2topic`, `rclpy`)
+   - Compilar el **micro-ROS Agent** desde fuente con colcon (`~/microros_ws`)
+   - Instalar **ESP-IDF v5.4.1** con paquetes Python para micro-ROS
+   - Instalar dependencias Python (`pymongo`, `python-dotenv`, `certifi`, `numpy`, `pyyaml`)
+   - Configurar `database/.env` con las credenciales MongoDB
 
-```bash
-mkdir -p ~/microros_ws/src && cd ~/microros_ws/src
-git clone -b jazzy https://github.com/micro-ROS/micro_ros_msgs.git
-git clone -b jazzy https://github.com/micro-ROS/micro-ROS-Agent.git
-
-cd ~/microros_ws
-source /opt/ros/jazzy/setup.bash
-colcon build
-source install/setup.bash
-```
-
-### 4. Instalar ESP-IDF 5.5.2
-
-```bash
-mkdir -p ~/esp && cd ~/esp
-git clone -b v5.5.2 --recursive https://github.com/espressif/esp-idf.git v5.5.2/esp-idf
-cd v5.5.2/esp-idf
-./install.sh esp32
-
-# Activar entorno (siempre antes de compilar)
-# ⚠️ IMPORTANTE: desactivar conda/venv antes de hacer esto
-conda deactivate  # si usás conda
-source ~/esp/v5.5.2/esp-idf/export.sh
-```
-
-> **⚠️ Conflicto de Python:** ESP-IDF 5.5.2 requiere **Python 3.12**. Si tenés Miniconda/Anaconda activo, el `python3` del sistema queda oculto por Python 3.13+ de conda. Siempre ejecutar `conda deactivate` antes de `source export.sh`.
-
-### 5. Clonar y configurar proyecto
-
-```bash
-git clone https://github.com/Menderin/sensores.git
-cd sensores/microRostest
-```
-
-### 6. Configurar credenciales WiFi
-
-```bash
-cd scripts
-./microros.sh edit-env   # Opción 12 del menú
-# Completar: WIFI_SSID, WIFI_PASSWORD, AGENT_IP, AGENT_PORT
-./microros.sh gen-wifi   # Genera wifi_config.h
-```
-
-### 7. Compilar y flashear ESP32
-
-```bash
-# ⚠️ Desactivar conda antes
-conda deactivate && conda deactivate
-
-cd microRostest/scripts
-./microros.sh all        # Build + Flash + Monitor (opción 2)
-```
-
-### 8. Instalar dependencias Python (dashboard + nodo ROS)
-
-```bash
-cd sensores
-pip install -r database/requirements.txt
-# o
-pip install pymongo python-dotenv streamlit numpy pandas matplotlib
-```
+3. ¡Listo! Usa el menú para operar el sistema:
+   ```bash
+   ./menu.sh
+   ```
 
 ---
 
-## 🚀 Uso del Sistema
+## 🎛️ Menú principal — `menu.sh`
 
-### Iniciar el stack completo (3 terminales)
+Punto de entrada único para gestionar todo el sistema:
 
-**Terminal 1 — micro-ROS Agent (WiFi/UDP)**
 ```bash
-source /opt/ros/jazzy/setup.bash
-source ~/microros_ws/install/setup.bash
-ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+./menu.sh
 ```
 
-**Terminal 2 — Nodo ROS → MongoDB**
+| Opción | Acción |
+|---|---|
+| **1** | Modificar credenciales (MongoDB `database/.env` y WiFi `microros-esp/main/versions/wifi/.env`) |
+| **2** | Iniciar agentes (micro-ROS Agent UDP / nodo sensores → MongoDB / motores) |
+| **3** | ESP32 (compilar, flashear, monitor, Agent, calibración…) |
+| **0** | Salir |
+
+### Submenú `2) Iniciar agentes`
+
+| Sub-opción | Acción | Cómo usar |
+|---|---|---|
+| **a** | Iniciar micro-ROS Agent UDP | Abrir en una terminal, Ctrl+C para detener |
+| **b** | Enviar datos a MongoDB | Abrir en otra terminal (requiere agent activo) |
+| **c** | Control de motores | Abrir en otra terminal (requiere agent activo) |
+
+---
+
+## 🚀 Uso del sistema
+
+### Flujo típico de operación
+
+1. **Terminal 1** — arrancar el Agent:
+   ```
+   ./menu.sh → 2 → a
+   ```
+
+2. **Terminal 2** — iniciar nodo de sensores:
+   ```
+   ./menu.sh → 2 → b
+   ```
+
+3. Verificar datos en tiempo real:
+   ```bash
+   source /opt/ros/jazzy/setup.bash
+   ros2 topic list
+   ros2 topic echo /sensor_data
+   ```
+
+4. Enviar comandos al motor:
+   ```bash
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'LEFT'" --once
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
+   ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
+   ```
+
+### Compilar y flashear el ESP32
+
+Desde el menú, opción **3**, o directamente:
+
 ```bash
-source /opt/ros/jazzy/setup.bash
-cd sensores/database
-python3 ros_sensor_node.py
-```
-
-**Terminal 3 — Dashboard Streamlit**
-```bash
-cd sensores/database
-streamlit run monitoreo_vivo.py
-```
-
-Con el script unificado (alternativa):
-```bash
-cd microRostest/scripts
-./microros.sh           # Menú interactivo
-./microros.sh agent-udp # Agent WiFi directo
-```
-
-### Verificar datos en tiempo real
-
-```bash
-source /opt/ros/jazzy/setup.bash
-
-# Ver todos los tópicos
-ros2 topic list
-
-# Ver datos del sensor
-ros2 topic echo /sensor_data
-
-# Enviar comando al motor
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'LEFT'" --once
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
-ros2 topic pub /motor_commands std_msgs/msg/String "data: 'SPEED_SET_70'" --once
+cd microros-esp/scripts
+./microros.sh
 ```
 
 ---
 
 ## 🧪 Calibración del Sensor pH
 
-El sistema incluye una herramienta interactiva para recalibrar el sensor en campo:
-
 ```bash
 source /opt/ros/jazzy/setup.bash
-cd microRostest/scripts/utils
+cd "microros-esp/scripts/utils"
 python3 calibracion_ph.py
 ```
 
-**Flujo de calibración:**
-1. Sumerge el sensor en buffer (ej: pH 4.01)
-2. Presiona **ESPACIO** → captura 10 muestras warmup + 30 reales → calcula mediana
-3. Ingresa el pH real de esa solución
-4. Repite para pH 6.86 y 9.18
-5. Presiona **Enter** → calcula regresión lineal con numpy → genera bloque para `config.h`
+**Flujo:**
+1. Sumergir el sensor en buffer (ej: pH 4.01)
+2. Presionar **ESPACIO** → captura 10 muestras warmup + 30 reales → calcula mediana
+3. Ingresar el pH real de esa solución
+4. Repetir para pH 6.86 y 9.18
+5. Presionar **Enter** → calcula regresión lineal → genera bloque para `config.h`
 
-**Calibración actual (2026-02-19):**
+**Calibración actual (2026-02-23):**
 
-| Buffer | Voltaje medido | Error |
+| Buffer | Voltaje medido | Notas |
 |---|---|---|
-| pH 4.01 | 915 mV | +0.012 |
-| pH 6.86 | 1713 mV | −0.028 |
-| pH 9.18 | 2342 mV | +0.016 |
+| pH 4.04 | 884 mV | Buffer estándar |
+| pH 6.90 | 1703 mV | Buffer neutro |
+| pH 9.23 | 2349 mV | Buffer alcalino |
 
 ```c
-// config.h — calibrado 2026-02-19, R² = 0.999912
-#define PH_SLOPE       0.003622
-#define PH_INTERCEPT   0.683614
+// config.h — calibrado 2026-02-23
+#define PH_SLOPE       0.003540
+#define PH_INTERCEPT   0.898120
 ```
 
 ---
@@ -302,43 +246,33 @@ python3 calibracion_ph.py
 
 ```
 sensores/
-├── README.md                          ← Este archivo
+├── menu.sh                        ← ★ Punto de entrada (3 opciones)
+├── install.sh                     ← Instalador automático (Ubuntu 24.04)
+├── .env.example                   ← Plantilla credenciales MongoDB
 │
-├── microRostest/                      ← Firmware ESP32 + herramientas
-│   ├── CMakeLists.txt
+├── database/                      ← Nodo ROS 2 + módulos MongoDB
+│   ├── .env                       ← ★ Credenciales MongoDB (no commitear)
+│   ├── ros_sensor_node.py         ← Suscriptor /sensor_data → MongoDB
+│   └── modules/
+│       ├── config.py              ← Carga database/.env, configura MongoDB
+│       ├── service.py             ← SensorDBService (guardar/pingar/registrar)
+│       └── crear_colecciones.py
+│
+├── microros-esp/                  ← Firmware ESP32 + herramientas PC
+│   ├── CMakeLists.txt             ← Auto-genera wifi_config.h desde .env
 │   ├── main/
-│   │   └── versions/wifi/
-│   │       ├── src/
-│   │       │   ├── main.c                    # Entry point, tareas FreeRTOS
-│   │       │   ├── sensor_manager_filtered.c # Lectura ADC con mediana
-│   │       │   ├── ros_publisher.c           # Publicador Float32MultiArray + sub motor
-│   │       │   └── motor_controller.c        # Control PWM motor DC
-│   │       └── include/
-│   │           ├── config.h                  # ★ Calibración, pines, parámetros
-│   │           ├── sensor_manager.h
-│   │           ├── ros_publisher.h
-│   │           └── motor_controller.h
-│   │
-│   ├── scripts/
-│   │   ├── microros.sh                # ★ Script unificado (15 opciones)
-│   │   ├── sensor_to_mongodb.py       # Alternativa directa a MongoDB
-│   │   └── utils/
-│   │       └── calibracion_ph.py      # ★ Herramienta calibración pH + numpy
-│   │
-│   └── docs/
-│       ├── README_ENV.md              # Configuración .env WiFi
-│       └── README_MONGODB.md          # Configuración MongoDB Atlas
+│   │   ├── versions/wifi/
+│   │   │   └── .env               ← ★ SSID, password, AGENT_IP, AGENT_PORT
+│   │   ├── Motores/
+│   │   │   └── motor_control_node.py  ← Nodo ROS 2 control de motores
+│   │   └── [fuentes C del firmware]
+│   └── scripts/
+│       ├── microros.sh            ← Submenú ESP32 (auto-genera sdkconfig)
+│       └── utils/
+│           └── calibracion_ph.py  ← Herramienta calibración + numpy
 │
-├── database/                          ← Nodo ROS + Dashboard
-│   ├── ros_sensor_node.py             # Suscriptor ROS → MongoDB
-│   ├── monitoreo_vivo.py              # Dashboard Streamlit
-│   └── requirements.txt
-│
-└── analisis/                          ← Scripts de análisis de datos
-    ├── scripts/
-    │   ├── analisis_temp_ph.py
-    │   └── analisis_temp_ph_3Dias.py
-    └── images/
+└── legacy/                        ← Análisis y versiones anteriores
+    └── analisis/
 ```
 
 ---
@@ -349,9 +283,8 @@ sensores/
 |---|---|---|
 | `ADC_PH_CHANNEL` | `ADC_CHANNEL_0` (GPIO36) | Canal ADC sensor pH |
 | `ADC_TEMP_CHANNEL` | `ADC_CHANNEL_3` (GPIO39) | Canal ADC temperatura |
-| `ADC_ATTEN` | `ADC_ATTEN_DB_12` | Rango 0–3.3V |
-| `PH_SLOPE` | `0.003622` | Pendiente regresión pH |
-| `PH_INTERCEPT` | `0.683614` | Intercepto regresión pH |
+| `PH_SLOPE` | `0.003540` | Pendiente regresión pH (cal. 2026-02-23) |
+| `PH_INTERCEPT` | `0.898120` | Intercepto regresión pH (cal. 2026-02-23) |
 | `TEMP_OFFSET_CAL` | `-0.7` | Offset calibración temperatura |
 | `PUBLISH_INTERVAL_MS` | `4000` | Publicación cada 4 segundos |
 | `MOTOR_IN1_PIN` | `GPIO25` | PWM motor izquierda |
@@ -361,30 +294,71 @@ sensores/
 
 ## 🐛 Troubleshooting
 
-### ❌ ESP-IDF falla con "Python 3.13 vs 3.12"
+### ❌ Falla compilación de micro-ROS Agent (Raspberry Pi)
+
+**Síntoma:** Error `micro_ros_msgs` falla al compilar durante `./install.sh`
+
+**Solución:**
+
+1. **Limpiar workspace y reinstalar dependencias:**
+   ```bash
+   rm -rf ~/microros_ws/build ~/microros_ws/install
+   sudo apt-get install -y python3-dev python3-setuptools build-essential
+   ```
+
+2. **Re-ejecutar instalador (ahora usa compilación secuencial):**
+   ```bash
+   sudo ./install.sh
+   ```
+
+3. **Si persiste el error, compilar manualmente con más verbosidad:**
+   ```bash
+   cd ~/microros_ws
+   source /opt/ros/jazzy/setup.bash
+   rosdep install --from-paths src --ignore-src -y
+   colcon build --symlink-install --executor sequential --parallel-workers 1 --event-handlers console_direct+
+   ```
+
+4. **Revisar logs específicos:**
+   ```bash
+   cat ~/microros_ws/log/latest_build/micro_ros_msgs/stderr.log
+   ```
+
+**Causas comunes:**
+- Memoria insuficiente en Raspberry Pi (compilación paralela)
+- Dependencias Python faltantes (`python3-dev`, `setuptools`)
+- Versión incompatible de colcon o setuptools
+
+### ❌ `rclpy._rclpy_pybind11` no importa (conflicto conda)
+
+El menú lo resuelve automáticamente usando un subshell limpio. Si ejecutas manualmente:
+
+```bash
+# Abrir una terminal nueva sin conda activo, o:
+conda deactivate
+source /opt/ros/jazzy/setup.bash
+source ~/microros_ws/install/setup.bash
+python3 database/ros_sensor_node.py
+```
+
+### ❌ ESP-IDF falla con Python 3.13 (o conflictos de colcon)
+
+El script `microros.sh` ahora limpia automáticamente las variables de entorno ROS antes de compilar para evitar conflictos entre el colcon de ROS 2 y el colcon interno de micro_ros_espidf_component. Si aún así falla:
 
 ```bash
 conda deactivate && conda deactivate
-rm -rf microRostest/build
-source ~/esp/v5.5.2/esp-idf/export.sh
+rm -rf "microros-esp/build"
+source ~/esp/esp-idf/export.sh
 idf.py build
-```
-
-### ❌ `rclpy` no importa en scripts Python
-
-```bash
-# NO usar conda ni venv para scripts ROS
-conda deactivate
-source /opt/ros/jazzy/setup.bash
-python3 mi_script.py
 ```
 
 ### ❌ ESP32 no conecta al Agent WiFi
 
-1. Verificar que `AGENT_IP` en `.env` es la IP real del PC (`./microros.sh show-ip`)
-2. Verificar que el Agent UDP está corriendo en el puerto correcto
-3. Desde el monitor serial (`./microros.sh monitor`) verificar que el ESP32 obtiene IP
-4. Firewall: `sudo ufw allow 8888/udp`
+1. Verificar que `AGENT_IP` en `microros-esp/main/versions/wifi/.env` es la IP real del PC
+2. Desde el menú: **3 → "Mostrar IP"** muestra la IP actual
+3. Firewall: `sudo ufw allow 8888/udp`
+4. Verificar en monitor serial que el ESP32 obtuvo IP
+5. **Importante**: Recompilar después de cambiar `.env` (el script `microros.sh` auto-genera `sdkconfig.defaults`)
 
 ### ❌ No aparecen tópicos en ROS 2
 
@@ -396,10 +370,37 @@ ros2 topic list
 
 ### ❌ Permiso denegado en `/dev/ttyUSB0`
 
+El instalador (`install.sh`) ya añade el usuario al grupo `dialout`. Si aún falla:
+
 ```bash
 sudo usermod -a -G dialout $USER
+# Cerrar sesión y volver a entrar, o:
 newgrp dialout
 ```
+
+---
+
+## 🔧 Mejoras Técnicas Recientes
+
+### Instalador (`install.sh`)
+- ✅ **Grupo dialout automático**: Añade el usuario al grupo para acceso serie del ESP32
+- ✅ **Detección inteligente ESP-IDF**: Verifica tanto el repositorio como el entorno Python
+- ✅ **Paquetes micro-ROS en venv IDF**: Instala automáticamente `catkin_pkg`, `empy`, `lark`, `colcon-common-extensions`
+- ✅ **Dependencias ROS 2 completas**: Incluye `std-msgs`, `ros2topic`, `ros2cli` para debugging
+- ✅ **Python científico**: Instala `numpy` (para calibración) y `pyyaml` (herramientas ROS)
+- ✅ **Soporte Raspberry Pi**: Compilación secuencial optimizada para ARM con manejo de errores robusto
+- ✅ **Resolución automática dependencias**: Ejecuta `rosdep` antes de compilar micro-ROS
+
+### Build ESP32 (`microros.sh` + `CMakeLists.txt`)
+- ✅ **Auto-generación de credenciales**: `CMakeLists.txt` lee `.env` y genera `wifi_config.h` automáticamente
+- ✅ **Sincronización sdkconfig**: `microros.sh` genera `sdkconfig.defaults` desde `.env` antes de compilar
+- ✅ **Limpieza de entorno**: Desactiva variables ROS durante build para evitar conflictos colcon
+- ✅ **Detección automática puerto**: Busca `/dev/ttyUSB*` y `/dev/ttyACM*` automáticamente
+
+### Sistema de menú (`menu.sh`)
+- ✅ **Source ESP-IDF inteligente**: Busca en múltiples ubicaciones (`IDF_PATH`, `~/esp/esp-idf`, versiones específicas)
+- ✅ **Subshells limpios**: Ejecuta agentes ROS en `bash --norc --noprofile` para evitar conflictos conda
+- ✅ **Rutas corregidas**: WiFi `.env` en `microros-esp/main/versions/wifi/.env` (no en `main/.env`)
 
 ---
 
@@ -412,7 +413,10 @@ newgrp dialout
 - [x] MongoDB Atlas + Dashboard Streamlit
 - [x] Herramienta calibración pH con regresión numpy
 - [x] Soporte múltiples ESP32 simultáneos
-- [ ] Alertas automáticas por valores fuera de rango
+- [x] Instalación automática con `install.sh` (ROS 2 + micro-ROS Agent + Python)
+- [x] Menú unificado `menu.sh` (credenciales, agentes, ESP32)- [x] Auto-configuración permisos serie (grupo dialout)
+- [x] Auto-generación credenciales WiFi desde .env (sin reconfigurar manualmente)
+- [x] Detección y limpieza de conflictos Python/colcon en build- [ ] Alertas automáticas por valores fuera de rango
 - [ ] OTA updates para firmware ESP32
 - [ ] Panel de control motores en Dashboard
 - [ ] Exportación automática periódica a JSON
@@ -421,7 +425,7 @@ newgrp dialout
 
 ## 👤 Autor
 
-**Menderin** · [@Menderin](https://github.com/Menderin) · [github.com/Menderin/sensores](https://github.com/Menderin/sensores)
+**Menderin** · [@Menderin](https://github.com/Menderin)
 
 ---
 

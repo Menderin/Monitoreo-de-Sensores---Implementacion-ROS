@@ -1,6 +1,7 @@
 # Archivos de compilación ESP-IDF
 build/
 sdkconfig.old
+sdkconfig.defaults
 *.pyc
 __pycache__/
 

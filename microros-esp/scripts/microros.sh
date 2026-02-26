@@ -19,7 +19,23 @@ set -e  # Salir si hay error
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
-ESP_IDF_PATH="/home/lab-ros/esp/v5.5.2/esp-idf"
+
+# Auto-detect ESP-IDF path (busca en ubicaciones comunes)
+_idf_candidates=(
+    "${IDF_PATH:-}"
+    "$HOME/esp/esp-idf"
+    "$HOME/esp/v5.5.2/esp-idf"
+    "$HOME/esp/v5.4.1/esp-idf"
+    "$HOME/esp/v5.3.2/esp-idf"
+)
+ESP_IDF_PATH=""
+for _d in "${_idf_candidates[@]}"; do
+    if [[ -n "$_d" && -f "$_d/export.sh" ]]; then
+        ESP_IDF_PATH="$_d"
+        break
+    fi
+done
+unset _idf_candidates _d
 ROS_SETUP="/opt/ros/jazzy/setup.bash"
 MICROROS_WS="$HOME/microros_ws"
 ESP_PORT="/dev/ttyUSB0"
@@ -88,15 +104,24 @@ source_esp_idf() {
         return 1
     fi
     info "Inicializando entorno ESP-IDF..."
+
+    # Desactivar entorno ROS 2 para evitar conflictos con el colcon
+    # interno de micro_ros_espidf_component durante el build
+    unset AMENT_PREFIX_PATH AMENT_CURRENT_PREFIX
+    unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_LOCALHOST_ONLY
+    unset COLCON_PREFIX_PATH ROS_PACKAGE_PATH
+    unset CMAKE_PREFIX_PATH CMAKE_EXTENSION_PATH
+    unset PYTHONPATH  # evita que catkin_pkg de ROS contamine el venv de IDF
+
     source "$ESP_IDF_PATH/export.sh"
-    
+
     # Verificar que idf.py esté disponible
     if ! command -v idf.py &> /dev/null; then
         error "idf.py no disponible después de cargar ESP-IDF"
         error "Verifica la instalación de ESP-IDF en: $ESP_IDF_PATH"
         return 1
     fi
-    
+
     success "Entorno ESP-IDF listo"
 }
 
@@ -119,14 +144,34 @@ build_flash_monitor() {
     cd "$PROJECT_DIR"
     source_esp_idf || return 1
     detect_esp_port
-    
+
+    # Generar sdkconfig.defaults desde .env para garantizar credenciales correctas
+    local env_file="$PROJECT_DIR/main/versions/wifi/.env"
+    if [[ -f "$env_file" ]]; then
+        local ssid pass agent_ip agent_port
+        ssid=$(grep "^WIFI_SSID=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
+        pass=$(grep "^WIFI_PASSWORD=" "$env_file" | cut -d'=' -f2-)
+        agent_ip=$(grep "^AGENT_IP=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
+        agent_port=$(grep "^AGENT_PORT=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
+        cat > "$PROJECT_DIR/sdkconfig.defaults" <<SDKEOF
+CONFIG_ESP_WIFI_SSID="${ssid}"
+CONFIG_ESP_WIFI_PASSWORD="${pass}"
+CONFIG_MICRO_ROS_AGENT_IP="${agent_ip}"
+CONFIG_MICRO_ROS_AGENT_PORT="${agent_port}"
+CONFIG_ESP_WIFI_AUTH_WPA2_PSK=y
+SDKEOF
+        info "sdkconfig.defaults generado desde .env (SSID: ${ssid}, Agent: ${agent_ip}:${agent_port})"
+    else
+        warning "No se encontró .env en $env_file — usando credenciales del sdkconfig existente"
+    fi
+
     info "Ejecutando: build → flash → monitor"
     echo ""
-    
+
     # Matar procesos del puerto
     sudo fuser -k "$ESP_PORT" 2>/dev/null || true
     sleep 1
-    
+
     idf.py -p "$ESP_PORT" -b 115200 build flash monitor
 }
 
@@ -515,10 +560,10 @@ show_menu() {
     echo "    15) Verificar configuración WiFi"
     echo ""
     
-    echo "    ${RED}0)  Salir${NC}"
+    echo -e "    ${RED}0)  Salir${NC}"
     echo ""
     
-    read -p "Selecciona una opción: " option
+    read -rp "Selecciona una opción: " option
     echo ""
     
     case $option in

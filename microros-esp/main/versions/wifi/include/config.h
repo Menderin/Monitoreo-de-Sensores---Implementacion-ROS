@@ -45,8 +45,14 @@
 // Buffers: pH 4.01→878mV, 6.82→1687.5mV, 9.18→2311mV
 // pH: calibrado 2026-02-19                                 
 // Buffers: pH 4.01→915mV, pH 6.86→1713mV, pH 9.18→2342mV    
-#define PH_SLOPE       0.003622                              
-#define PH_INTERCEPT   0.683614 
+//#define PH_SLOPE       0.003622                              
+//#define PH_INTERCEPT   0.683614 
+
+// pH: calibrado 2026-02-23
+// Buffers: pH 4.04→884mV, pH 6.90→1703mV, pH 9.23→2349mV
+#define PH_SLOPE       0.003540                             
+#define PH_INTERCEPT   0.898120    
+
 
 // ========================================
 // CONFIGURACIÓN DE PUBLICACIÓN
