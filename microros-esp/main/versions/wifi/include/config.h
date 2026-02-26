@@ -135,4 +135,23 @@
 // Velocidad por defecto
 #define MOTOR_SPEED_DEFAULT  MOTOR_SPEED_FAST
 
+// ========================================
+// RESILIENCIA MICRO-ROS (APP LAYER)
+// ========================================
+
+/** Intervalo entre cada ping al Agente (ms). */
+#define ROS_AGENT_PING_INTERVAL_MS    5000U
+
+/** Timeout de cada intento de ping al Agente (ms). */
+#define ROS_AGENT_PING_TIMEOUT_MS      500U
+
+/** Número de reintentos de ping antes de declarar sesión perdida. */
+#define ROS_AGENT_MAX_RETRIES             5
+
+/** Pausa entre reintentos de ping (ms). */
+#define ROS_AGENT_RETRY_DELAY_MS        500U
+
+/** Pausa de seguridad entre deinit e init durante hot-reload (ms). */
+#define ROS_AGENT_REINIT_DELAY_MS      1500U
+
 #endif // CONFIG_H

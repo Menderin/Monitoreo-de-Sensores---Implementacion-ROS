@@ -49,29 +49,41 @@ void micro_ros_task(void *arg)
     // Loop principal: priorizar procesamiento de comandos de motor
     sensor_data_t data;
     uint32_t last_publish_time = 0;
-    
+    uint32_t last_ping_time    = 0;
+
     while (1) {
-        // CRÍTICO: Procesar comandos de motor frecuentemente (baja latencia)
-        ros_executor_spin_some(RCL_MS_TO_NS(10));  // 10ms timeout
-        
-        // Publicar sensores solo cada PUBLISH_INTERVAL_MS
         uint32_t current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+
+        // ── Chequeo periódico de sesión con el Agente ───────────────
+        // Se ejecuta cada ROS_AGENT_PING_INTERVAL_MS (5 s).
+        // Si falla hace hot-reload internamente; si el reinit también falla,
+        // simplemente lo intentará de nuevo en el próximo ciclo.
+        if (current_time - last_ping_time >= ROS_AGENT_PING_INTERVAL_MS) {
+            if (!ros_agent_check_and_reconnect()) {
+                ESP_LOGW(TAG, "Hot-reload falló. Se reintentará en el próximo ciclo.");
+            }
+            last_ping_time = current_time;
+            // Actualizar current_time por si el hot-reload tomó tiempo
+            current_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        }
+
+        // ── Procesar comandos de motor (baja latencia) ───────────────
+        ros_executor_spin_some(RCL_MS_TO_NS(10));  // 10ms timeout
+
+        // ── Publicar sensores cada PUBLISH_INTERVAL_MS ───────────────
         if (current_time - last_publish_time >= PUBLISH_INTERVAL_MS) {
-            // Leer sensores
-            data.temperature = sensor_read_temperature();
-            data.ph = sensor_read_ph();
+            data.temperature    = sensor_read_temperature();
+            data.ph             = sensor_read_ph();
             data.voltage_raw_ph = sensor_read_ph_voltage_raw();
-            
-            // Publicar datos
+
             ros_publisher_publish(&data);
-            
             last_publish_time = current_time;
         }
-        
+
         // Espera mínima entre iteraciones (50ms = ~20Hz para motor)
         vTaskDelay(pdMS_TO_TICKS(50));
     }
-    
+
     // Cleanup (nunca se alcanza en operación normal)
     ros_publisher_deinit();
     vTaskDelete(NULL);
