@@ -63,9 +63,10 @@ def generate_header(config):
 #define WIFI_CONFIG_H
 
 // Configuración WiFi
+// Nota: el número de reintentos y los tiempos de espera se definen
+// en config.h (WIFI_MAX_RECONNECT_TIME_MS, WIFI_RETRY_DELAY_MS, etc.)
 #define WIFI_SSID           "{config['WIFI_SSID']}"
 #define WIFI_PASSWORD       "{config['WIFI_PASSWORD']}"
-#define WIFI_MAX_RETRY      10
 
 // Configuración micro-ROS Agent (UDP)
 #define AGENT_IP            "{config['AGENT_IP']}"

@@ -90,11 +90,15 @@ void app_main(void)
     ESP_LOGI(TAG, "==============================================");
     
     // 1. Inicializar conexión WiFi
-    ESP_LOGI(TAG, "Paso 1/3: Inicializando WiFi...");
+    ESP_LOGI(TAG, "Paso 1/4: Inicializando WiFi...");
     if (!network_manager_init()) {
         ESP_LOGE(TAG, "Error al inicializar red. Abortando.");
         return;
     }
+
+    // 1.5. Lanzar monitor de conexión WiFi (detecta caídas y reconecta)
+    ESP_LOGI(TAG, "Paso 1.5/4: Iniciando monitor WiFi activo...");
+    network_manager_start_monitor();
     
     // 2. Inicializar sistema de sensores
     ESP_LOGI(TAG, "Paso 2/3: Inicializando sensores...");
