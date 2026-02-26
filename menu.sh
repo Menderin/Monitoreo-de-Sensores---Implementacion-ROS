@@ -246,7 +246,7 @@ menu_credentials() {
         echo -e "  ${BOLD}1. Modificar credenciales${RESET}"
         echo ""
         echo "    a)  Base de datos (database/.env)"
-        echo "    b)  WiFi / micro-ROS (microros-esp/main/.env)"
+        echo "    b)  WiFi / micro-ROS (microros-esp/main/versions/wifi/.env)"
         echo ""
         echo "    0)  Volver"
         echo ""

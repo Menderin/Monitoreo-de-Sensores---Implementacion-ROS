@@ -33,8 +33,8 @@ datos_sensores/
 # Configuraciones locales (credenciales WiFi y variables de entorno)
 .env
 .env.local
-main/.env
-main/.env.local
+main/versions/wifi/.env
+main/versions/wifi/.env.local
 sensores/microRostest/.env
 
 # Archivos de configuración WiFi generados (contienen credenciales)

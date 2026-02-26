@@ -149,6 +149,10 @@ if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
         success "micro-ROS Agent ya instalado en $MICROROS_WS"
     else
         warn "Workspace existe pero el Agent no está disponible — recompilando..."
+        
+        info "Limpiando build artifacts residuales..."
+        rm -rf "$MICROROS_WS/build" "$MICROROS_WS/install" "$MICROROS_WS/log"
+        
         info "Resolviendo dependencias con rosdep..."
         sudo -u "$REAL_USER" bash -c "source /opt/ros/jazzy/setup.bash && cd '$MICROROS_WS' && rosdep install --from-paths src --ignore-src -y" || true
         
@@ -220,10 +224,26 @@ fi
 # ==============================================================================
 header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
 
-_idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1)
-if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
-    success "ESP-IDF ya instalado en $ESP_IDF_DIR"
-else
+# Detección de Raspberry Pi — ESP-IDF no es necesario en la RPi
+_is_rpi=false
+if grep -qi "raspberry\|bcm2\|rpi" /proc/cpuinfo 2>/dev/null || [[ "$(uname -m)" == "aarch64" && -f /sys/firmware/devicetree/base/model && "$(cat /sys/firmware/devicetree/base/model 2>/dev/null)" == *"Raspberry"* ]]; then
+    _is_rpi=true
+fi
+
+if $_is_rpi; then
+    warn "Raspberry Pi detectada — omitiendo ESP-IDF."
+    warn "ESP-IDF solo es necesario en el PC de desarrollo para compilar/flashear el ESP32."
+    info "Si necesitas ESP-IDF en la RPi, ejecuta: ESP_FORCE_IDF=1 sudo ./install.sh"
+    if [[ "${ESP_FORCE_IDF:-0}" != "1" ]]; then
+        success "ESP-IDF omitido (no necesario en Raspberry Pi)."
+    fi
+fi
+
+if ! $_is_rpi || [[ "${ESP_FORCE_IDF:-0}" == "1" ]]; then
+    _idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1 || true)
+    if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
+        success "ESP-IDF ya instalado en $ESP_IDF_DIR"
+    else
     info "Instalando dependencias del sistema para ESP-IDF..."
     apt-get install -y --no-install-recommends \
         git wget flex bison gperf cmake ninja-build ccache \
@@ -260,6 +280,7 @@ else
     fi
     success "ESP-IDF instalado."
 fi
+fi  # cierre de: if ! $_is_rpi || ESP_FORCE_IDF
 
 # ==============================================================================
 # 5. Instalar dependencias Python
@@ -342,6 +363,75 @@ else
 fi
 
 # ==============================================================================
+# 8. Configurar hotspot WiFi para compatibilidad con ESP32
+# ==============================================================================
+header "8/8  Configurando hotspot WiFi (compatibilidad ESP32)"
+
+# Solo aplica si hay NetworkManager y algún hotspot activo en modo AP
+if command -v nmcli &>/dev/null; then
+    # Buscar conexiones en modo Access Point (hotspot)
+    HOTSPOT_NAMES=$(nmcli -t -f NAME,TYPE,802-11-wireless.mode con show 2>/dev/null \
+        | awk -F: '$2=="wifi" && $3=="ap" {print $1}' || true)
+
+    # Si no encuentra con el campo mode, buscar por las que tienen ssid y son wifi
+    if [[ -z "$HOTSPOT_NAMES" ]]; then
+        HOTSPOT_NAMES=$(nmcli -t -f NAME,TYPE con show 2>/dev/null \
+            | awk -F: '$2=="802-11-wireless" {print $1}' || true)
+        # Filtrar solo las que están en modo AP
+        FILTERED=""
+        for CON in $HOTSPOT_NAMES; do
+            MODE=$(nmcli -f 802-11-wireless.mode con show "$CON" 2>/dev/null \
+                | awk '{print $2}' || true)
+            if [[ "$MODE" == "ap" ]]; then
+                FILTERED="$FILTERED $CON"
+            fi
+        done
+        HOTSPOT_NAMES="$FILTERED"
+    fi
+
+    if [[ -n "$HOTSPOT_NAMES" ]]; then
+        for CON in $HOTSPOT_NAMES; do
+            CON=$(echo "$CON" | xargs)  # trim espacios
+            [[ -z "$CON" ]] && continue
+            info "Configurando hotspot '${CON}' para compatibilidad ESP32..."
+
+            # Aplicar: WPA2 puro + PMF desactivado + cifrado CCMP
+            nmcli con modify "$CON" \
+                802-11-wireless-security.key-mgmt   wpa-psk \
+                802-11-wireless-security.proto      rsn \
+                802-11-wireless-security.pairwise   ccmp \
+                802-11-wireless-security.group      ccmp \
+                802-11-wireless-security.pmf        0 \
+                802-11-wireless.band                bg \
+                2>/dev/null && success "'${CON}': WPA2-PSK puro, PMF desactivado, banda 2.4GHz" \
+                            || warn  "No se pudo modificar '${CON}' (¿permisos de root?)."
+
+            # Reiniciar el hotspot si está activo para aplicar cambios
+            IS_ACTIVE=$(nmcli -t -f NAME con show --active 2>/dev/null \
+                | grep -Fx "$CON" || true)
+            if [[ -n "$IS_ACTIVE" ]]; then
+                info "Reiniciando hotspot '${CON}' para aplicar cambios..."
+                nmcli con down "$CON" 2>/dev/null || true
+                sleep 2
+                nmcli con up   "$CON" 2>/dev/null \
+                    && success "Hotspot '${CON}' reiniciado." \
+                    || warn    "No se pudo reiniciar '${CON}'. Reinicia manualmente."
+            fi
+        done
+    else
+        info "No se detectaron hotspots WiFi activos — omitiendo configuración ESP32."
+        info "Si configuras un hotspot después, ejecuta:"
+        info "  sudo nmcli con modify <NOMBRE_HOTSPOT> \\"
+        info "    802-11-wireless-security.pmf 0 \\"
+        info "    802-11-wireless-security.proto rsn \\"
+        info "    802-11-wireless-security.pairwise ccmp \\"
+        info "    802-11-wireless-security.group ccmp"
+    fi
+else
+    info "NetworkManager no disponible — omitiendo configuración de hotspot."
+fi
+
+# ==============================================================================
 # Resumen final
 # ==============================================================================
 echo ""
@@ -365,9 +455,14 @@ echo -e "  source /opt/ros/jazzy/setup.bash"
 echo -e "  source $MICROROS_WS/install/setup.bash"
 echo -e "  python3 $INSTALL_DIR/database/ros_sensor_node.py"
 echo ""
-echo -e "  ${CYAN}# Para compilar/flashear el ESP32:${RESET}"
-echo -e "  . $ESP_IDF_DIR/export.sh"
-echo -e "  cd $INSTALL_DIR && ./menu.sh  # opción 3"
+if $_is_rpi; then
+    echo -e "  ${YELLOW}Nota: ESP-IDF no se instaló (no es necesario en Raspberry Pi).${RESET}"
+    echo -e "  ${YELLOW}Compila y flashea el ESP32 desde tu PC de desarrollo.${RESET}"
+else
+    echo -e "  ${CYAN}# Para compilar/flashear el ESP32:${RESET}"
+    echo -e "  . $ESP_IDF_DIR/export.sh"
+    echo -e "  cd $INSTALL_DIR && ./menu.sh  # opción 3"
+fi
 echo ""
 echo -e "  ${CYAN}# IP de este equipo (configurar como AGENT_IP en el ESP32):${RESET}"
 ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | \

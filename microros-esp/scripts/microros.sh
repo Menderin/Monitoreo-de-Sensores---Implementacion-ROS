@@ -40,7 +40,7 @@ ROS_SETUP="/opt/ros/jazzy/setup.bash"
 MICROROS_WS="$HOME/microros_ws"
 ESP_PORT="/dev/ttyUSB0"
 BAUDRATE="115200"
-ENV_FILE="$PROJECT_DIR/main/.env"
+ENV_FILE="$PROJECT_DIR/main/versions/wifi/.env"
 AGENT_PORT=8888
 
 # Colores
@@ -165,12 +165,24 @@ SDKEOF
         warning "No se encontró .env en $env_file — usando credenciales del sdkconfig existente"
     fi
 
-    info "Ejecutando: build → flash → monitor"
+    info "Ejecutando: erase → build → flash → monitor"
     echo ""
 
     # Matar procesos del puerto
     sudo fuser -k "$ESP_PORT" 2>/dev/null || true
     sleep 1
+
+    # Borrar flash completa (elimina NVS con credenciales WiFi residuales)
+    info "🧹 Borrando flash del ESP32 (elimina credenciales anteriores)..."
+    idf.py -p "$ESP_PORT" erase-flash || { error "Error al borrar flash"; return 1; }
+    success "Flash borrada"
+    sleep 1
+
+    # Eliminar sdkconfig anterior para forzar regeneración desde sdkconfig.defaults
+    if [[ -f "$PROJECT_DIR/sdkconfig" ]]; then
+        rm "$PROJECT_DIR/sdkconfig"
+        info "sdkconfig anterior eliminado (se regenerará desde sdkconfig.defaults)"
+    fi
 
     idf.py -p "$ESP_PORT" -b 115200 build flash monitor
 }
@@ -355,11 +367,11 @@ generate_wifi_config() {
     fi
     
     info "Generando wifi_config.h desde .env..."
-    python3 "$PROJECT_DIR/main/generate_wifi_config.py"
+    python3 "$PROJECT_DIR/main/versions/wifi/generate_wifi_config.py"
     
     if [ $? -eq 0 ]; then
         success "wifi_config.h generado correctamente"
-        info "Ubicación: $PROJECT_DIR/main/wifi_config.h"
+        info "Ubicación: $PROJECT_DIR/main/versions/wifi/wifi_config.h"
     else
         error "Error generando archivo"
         return 1
