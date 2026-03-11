@@ -145,6 +145,84 @@ EOF
     read -rp "  Presiona Enter para continuar..." _
 }
 
+# ==============================================================================
+# 1c. Editar credenciales de Telegram
+# ==============================================================================
+edit_telegram_env() {
+    echo ""
+    echo -e "${BOLD}  Credenciales — Notificaciones Telegram${RESET}"
+    echo -e "  Archivo: ${YELLOW}database/.env${RESET}"
+    echo ""
+    echo -e "  Variables requeridas:"
+    echo -e "    ${CYAN}TELEGRAM_BOT_TOKEN${RESET}  — Token del bot (obtenlo de @BotFather)"
+    echo -e "    ${CYAN}TELEGRAM_CHAT_ID${RESET}    — Tu Chat ID (obtenlo de @userinfobot)"
+    echo ""
+
+    # Asegurarse de que database/.env existe
+    if [[ ! -f "$DB_ENV" ]]; then
+        warn ".env de base de datos no encontrado."
+        if [[ -f "$DB_ENV_EXAMPLE" ]]; then
+            info "Creando database/.env desde plantilla..."
+            cp "$DB_ENV_EXAMPLE" "$DB_ENV"
+            success "Creado: database/.env"
+        else
+            error ".env.example no encontrado. Crea database/.env manualmente."
+            read -rp "  Presiona Enter para volver..." _; return
+        fi
+    fi
+
+    # Mostrar valores actuales (enmascarados)
+    local cur_token cur_chat
+    cur_token=$(grep "^TELEGRAM_BOT_TOKEN=" "$DB_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    cur_chat=$(grep "^TELEGRAM_CHAT_ID=" "$DB_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    if [[ -n "$cur_token" ]]; then
+        local masked_token="${cur_token:0:6}****${cur_token: -4}"
+        info "Token actual : ${BOLD}$masked_token${RESET}"
+    else
+        warn "TELEGRAM_BOT_TOKEN no configurado."
+    fi
+    if [[ -n "$cur_chat" ]]; then
+        info "Chat ID actual: ${BOLD}$cur_chat${RESET}"
+    else
+        warn "TELEGRAM_CHAT_ID no configurado."
+    fi
+    echo ""
+
+    # Pedir nuevos valores (Enter = conservar actual)
+    read -rsp "  Nuevo TELEGRAM_BOT_TOKEN (Enter para conservar): " new_token; echo ""
+    read -rp  "  Nuevo TELEGRAM_CHAT_ID   (Enter para conservar): " new_chat
+    echo ""
+
+    # Función helper: upsert una variable en el .env
+    _upsert_env() {
+        local key="$1" val="$2" file="$3"
+        if grep -q "^${key}=" "$file"; then
+            sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+        else
+            echo "${key}=${val}" >> "$file"
+        fi
+    }
+
+    local changed=false
+    if [[ -n "$new_token" ]]; then
+        _upsert_env "TELEGRAM_BOT_TOKEN" "$new_token" "$DB_ENV"
+        changed=true
+    fi
+    if [[ -n "$new_chat" ]]; then
+        _upsert_env "TELEGRAM_CHAT_ID" "$new_chat" "$DB_ENV"
+        changed=true
+    fi
+
+    if $changed; then
+        success "Credenciales de Telegram guardadas en database/.env"
+        warn "Reinicia el servicio smart-alerter para aplicar los cambios:"
+        warn "  sudo systemctl restart smart-alerter"
+    else
+        info "Sin cambios."
+    fi
+    read -rp "  Presiona Enter para continuar..." _
+}
+
 # ─── Helper: leer AGENT_PORT del .env WiFi ────────────────────────────────────
 get_agent_port() {
     local port=8888
@@ -334,13 +412,14 @@ deploy_services() {
     for tpl in "$SERVICES_DIR"/smart-*.service.tpl; do
         [[ -f "$tpl" ]] || continue
         local svc_name
-        svc_name=$(basename "$tpl" .tpl)   # → smart-agent.service / smart-bridge.service
+        svc_name=$(basename "$tpl" .tpl)   # → smart-agent.service / smart-bridge.service / smart-alerter.service
         local dest="/etc/systemd/system/$svc_name"
 
         info "Generando $svc_name ..."
         sed \
             -e "s|{{USER}}|${current_user}|g" \
             -e "s|{{SCRIPTS_DIR}}|${SCRIPTS_DIR}|g" \
+            -e "s|{{REPO_DIR}}|${REPO_DIR}|g" \
             "$tpl" | sudo tee "$dest" > /dev/null
 
         sudo chmod 644 "$dest"
@@ -353,7 +432,7 @@ deploy_services() {
     sudo systemctl daemon-reload
 
     info "Habilitando e iniciando servicios..."
-    sudo systemctl enable --now smart-agent.service smart-bridge.service
+    sudo systemctl enable --now smart-agent.service smart-bridge.service smart-alerter.service
 
     # ── Alias de acceso rápido en ~/.bashrc ───────────────────────────────────
     local alias_line="alias status='bash \"${SCRIPTS_DIR}/status.sh\"'"
@@ -376,7 +455,7 @@ deploy_services() {
     echo ""
     echo -e "${BOLD}  [ Post-Deploy Health Check ]${RESET}"
 
-    for svc in smart-agent smart-bridge; do
+    for svc in smart-agent smart-bridge smart-alerter; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
             success "  $svc: ${GREEN}ACTIVO ✓${RESET}"
         else
@@ -470,6 +549,71 @@ follow_logs() {
     read -rp "  Presiona Enter para continuar..." _
 }
 
+# ── 4e. Configurar horarios de reportes (Cron) ────────────────────────────────
+configure_cron() {
+    echo ""
+    echo -e "${BOLD}  Configurar Reportes Automáticos — Cron${RESET}"
+    echo ""
+    echo -e "  El script ${CYAN}smart_reporter.py${RESET} se ejecutará automáticamente"
+    echo -e "  a las horas que configures. Cubre ventanas de 12 horas."
+    echo ""
+
+    local reporter_script="$SCRIPTS_DIR/telegram/smart_reporter.py"
+    if [[ ! -f "$reporter_script" ]]; then
+        error "No se encontró: $reporter_script"
+        error "Asegúrate de que el repositorio esté completo."
+        read -rp "  Presiona Enter para volver..." _; return
+    fi
+
+    # Pedir horas con validación
+    local hora_manana hora_tarde
+    while true; do
+        read -rp "  Hora del reporte de MAÑANA [0-23, default: 8]: " hora_manana
+        hora_manana="${hora_manana:-8}"
+        if [[ "$hora_manana" =~ ^[0-9]+$ ]] && (( hora_manana >= 0 && hora_manana <= 23 )); then
+            break
+        fi
+        warn "Hora inválida. Ingresa un número entre 0 y 23."
+    done
+
+    while true; do
+        read -rp "  Hora del reporte de TARDE  [0-23, default: 20]: " hora_tarde
+        hora_tarde="${hora_tarde:-20}"
+        if [[ "$hora_tarde" =~ ^[0-9]+$ ]] && (( hora_tarde >= 0 && hora_tarde <= 23 )); then
+            break
+        fi
+        warn "Hora inválida. Ingresa un número entre 0 y 23."
+    done
+
+    echo ""
+    info "Configurando crontab:"
+    info "  Reporte mañana : ${BOLD}$hora_manana:00${RESET} UTC"
+    info "  Reporte tarde  : ${BOLD}$hora_tarde:00${RESET} UTC"
+    echo ""
+
+    # Eliminar entradas previas de smart_reporter.py (sin tocar el resto del crontab)
+    local tmp_cron
+    tmp_cron=$(mktemp)
+    crontab -l 2>/dev/null | grep -v "smart_reporter\.py" > "$tmp_cron" || true
+
+    # Añadir las nuevas reglas
+    echo "0 ${hora_manana} * * * /usr/bin/python3 ${reporter_script} >> /tmp/reporter.log 2>&1" >> "$tmp_cron"
+    echo "0 ${hora_tarde}  * * * /usr/bin/python3 ${reporter_script} >> /tmp/reporter.log 2>&1" >> "$tmp_cron"
+
+    crontab "$tmp_cron"
+    rm -f "$tmp_cron"
+
+    echo ""
+    success "Crontab actualizado. Sin duplicados."
+    echo ""
+    echo -e "  ${BOLD}Crontab actual (entradas del reporter):${RESET}"
+    crontab -l 2>/dev/null | grep "smart_reporter" | sed 's/^/    /'
+    echo ""
+    warn "Nota: las horas son en la zona horaria del sistema (UTC por defecto en Raspberry Pi OS)."
+    warn "Para ajustar a tu zona horaria local, ejecuta: sudo dpkg-reconfigure tzdata"
+    read -rp "  Presiona Enter para continuar..." _
+}
+
 # ==============================================================================
 # Submenús
 # ==============================================================================
@@ -482,6 +626,7 @@ menu_credentials() {
         echo ""
         echo "    a)  Base de datos (database/.env)"
         echo "    b)  WiFi / micro-ROS (microros-esp/main/.env)"
+        echo "    c)  Notificaciones Telegram (Bot Token / Chat ID)"
         echo ""
         echo "    0)  Volver"
         echo ""
@@ -489,6 +634,7 @@ menu_credentials() {
         case "$opt" in
             a|A) edit_db_env ;;
             b|B) edit_wifi_env ;;
+            c|C) edit_telegram_env ;;
             0)   return ;;
             *)   warn "Opción no válida." ; sleep 1 ;;
         esac
@@ -528,6 +674,7 @@ menu_gateway() {
         echo "    b)  Instalar / actualizar servicios systemd"
         echo "    c)  Aplicar reglas de Firewall"
         echo "    d)  Seguir logs en vivo"
+        echo "    e)  Configurar horarios de reportes (Cron)"
         echo ""
         echo "    0)  Volver"
         echo ""
@@ -537,6 +684,7 @@ menu_gateway() {
             b|B) deploy_services ;;
             c|C) apply_firewall ;;
             d|D) follow_logs ;;
+            e|E) configure_cron ;;
             0)   return ;;
             *)   warn "Opción no válida." ; sleep 1 ;;
         esac

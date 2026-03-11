@@ -11,15 +11,41 @@
 #   sudo IF_WAN=eth1 IF_LAN=wlan1 ./firewall.sh
 # ==============================================================================
 
+
+# ── Auto-detección de interfaces (sobreescribible por entorno) ────────────────
+# Si ya fueron exportadas externamente, se respetan.
+if [[ -z "${IF_WAN:-}" ]]; then
+    # Primera interfaz Ethernet activa (empieza con 'e': eth0, enp3s0, etc.)
+    IF_WAN=$(ip -o link show up | awk -F': ' '$2~/^e/{print $2; exit}')
+fi
+if [[ -z "${IF_LAN:-}" ]]; then
+    # Primera interfaz WiFi activa (empieza con 'w': wlan0, wlp2s0, etc.)
+    IF_LAN=$(ip -o link show up | awk -F': ' '$2~/^w/{print $2; exit}')
+fi
 IF_WAN="${IF_WAN:-eth0}"
 IF_LAN="${IF_LAN:-wlan0}"
 
-# --- Verificar interfaces ---
-for IF in "$IF_WAN" "$IF_LAN"; do
-    if ! ip link show "$IF" &>/dev/null; then
-        echo "[WARN] Interfaz '$IF' no encontrada. Verifica IF_WAN / IF_LAN."
-    fi
-done
+# ── Mostrar y confirmar interfaces ───────────────────────────────────────────
+echo ""
+echo "======================================================"
+echo "  INTERFACES DETECTADAS"
+echo "======================================================"
+echo "  IF_WAN (Internet/Lab) : $IF_WAN"
+echo "  IF_LAN (Sensores WiFi): $IF_LAN"
+echo "======================================================"
+echo ""
+read -rp "¿Las interfaces son correctas? [S/n]: " _confirm_if
+echo ""
+if [[ "$_confirm_if" =~ ^[nN]$ ]]; then
+    read -rp "  Ingresa la interfaz WAN (ej: eth0, enp3s0): " _input_wan
+    read -rp "  Ingresa la interfaz LAN (ej: wlan0, wlp2s0): " _input_lan
+    [[ -n "$_input_wan" ]] && IF_WAN="$_input_wan"
+    [[ -n "$_input_lan" ]] && IF_LAN="$_input_lan"
+    echo ""
+    echo "[INFO] Usando: WAN=$IF_WAN  LAN=$IF_LAN"
+    echo ""
+fi
+
 
 # --- 1. Limpieza total ---
 echo "[*] Limpiando reglas antiguas..."
