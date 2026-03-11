@@ -8,7 +8,10 @@ from dotenv import load_dotenv
 # ==========================================
 # 1. CONFIGURACIÓN DE ENTORNO
 # ==========================================
-env_path = os.path.expanduser('~/Monitoreo-de-Sensores---Implementacion-ROS/database/.env')
+# Ruta dinámica al .env (relativa a la ubicación de este script)
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+env_path = os.path.join(SCRIPT_DIR, '..', '..', '..', 'database', '.env')
+env_path = os.path.realpath(env_path)
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -21,7 +24,7 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 # ==========================================
 # 2. CONEXIÓN A MONGODB
 # ==========================================
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client[MONGO_DB_NAME]
 col_devices = db[MONGO_COL_DEVICES]
 col_sensors = db[MONGO_COL_SENSORS]
@@ -32,7 +35,11 @@ estado_alertas = {}
 def enviar_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
-    requests.post(url, json=payload)
+    try:
+        respuesta = requests.post(url, json=payload, timeout=10)
+        respuesta.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
 
 def check_alerts():
     ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)

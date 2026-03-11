@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 # ==========================================
 # 1. CONFIGURACIÓN DE ENTORNO
 # ==========================================
-env_path = os.path.expanduser('~/Monitoreo-de-Sensores---Implementacion-ROS/database/.env')
+# Ruta dinámica al .env (relativa a la ubicación de este script)
+SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+env_path = os.path.join(SCRIPT_DIR, '..', '..', '..', 'database', '.env')
+env_path = os.path.realpath(env_path)
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -35,8 +38,8 @@ def guardar_estado(estado):
 
 def enviar_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
-    respuesta = requests.post(url, json=payload)
+    payload = {"chat_id": CHAT_ID, "text": mensaje}
+    respuesta = requests.post(url, json=payload, timeout=10)
     respuesta.raise_for_status()
 
 # ==========================================
@@ -77,7 +80,7 @@ def generar_reporte():
     if estado.get(id_reporte) == True:
         return
 
-    client = MongoClient(MONGO_URI)
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client[MONGO_DB_NAME]
     col_devices = db[MONGO_COL_DEVICES]
     col_sensors = db[MONGO_COL_SENSORS]

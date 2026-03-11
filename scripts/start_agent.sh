@@ -20,7 +20,7 @@ if [[ -f "$WIFI_ENV" ]]; then
 fi
 
 # Matar instancias anteriores (sin fallar si no hay ninguna)
-sudo pkill -f micro_ros_agent 2>/dev/null || true
+pkill -f micro_ros_agent 2>/dev/null || true
 sleep 1
 
 # Cargar entornos ROS 2 y micro-ROS
@@ -31,4 +31,4 @@ source "$MICROROS_WS/install/setup.bash"
 
 # exec: systemd controla el proceso real (PID tracking correcto)
 exec "$MICROROS_WS/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent" \
-    udp4 --port "$AGENT_PORT"
+    udp4 --port "${AGENT_PORT:-8888}"
