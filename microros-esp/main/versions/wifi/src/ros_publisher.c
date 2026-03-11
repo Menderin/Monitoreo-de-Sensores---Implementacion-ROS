@@ -75,8 +75,19 @@ static rosidl_runtime_c__float__Sequence data_sequence = {
 
 static bool initialized = false;
 
+/**
+ * IP y puerto del Agente persistidos como strings.
+ * Son inmutables una vez configurados y nunca quedan obsoletos
+ * (a diferencia de un rmw_init_options_t copiado por valor, cuyos
+ * punteros internos se invalidan tras cada rclc_support_fini).
+ */
+static char s_agent_ip[64]  = {0};
+static char s_agent_port[8] = {0};
+static bool s_rmw_options_ready = false;
+
+
 // ========================================
-// FUNCIONES PRIVADAS
+// FUNCIONES PRIVADAS — UTILIDADES
 // ========================================
 
 static void get_device_mac_floats(float *mac_part1, float *mac_part2) {
@@ -153,6 +164,129 @@ static void motor_cmd_callback(const void *msgin)
 }
 
 // ========================================
+// FUNCIONES PRIVADAS — CICLO DE VIDA
+// ========================================
+
+/**
+ * @brief Destruye todas las entidades ROS en orden inverso (hot-reload safe).
+ *
+ * Usa RCSOFTCHECK: no aborta si el Agente ya no responde.
+ * Los buffers estáticos (sensor_data_array, motor_cmd_buffer) NO se liberan.
+ */
+static void ros_entities_destroy(void)
+{
+    ESP_LOGI(TAG, "[Resilience] Destruyendo entidades ROS...");
+
+    // 1. Executor
+    RCSOFTCHECK(rclc_executor_fini(&executor));
+
+    // 2. Suscriptor
+    RCSOFTCHECK(rcl_subscription_fini(&motor_cmd_subscriber, &node));
+
+    // 3. Publicador
+    RCSOFTCHECK(rcl_publisher_fini(&sensor_data_publisher, &node));
+
+    // 4. Nodo
+    RCSOFTCHECK(rcl_node_fini(&node));
+
+    // 5. Soporte (incluyendo contexto XRCE-DDS)
+    RCSOFTCHECK(rclc_support_fini(&support));
+
+    initialized = false;
+    ESP_LOGI(TAG, "[Resilience] Entidades destruidas.");
+}
+
+/**
+ * @brief Crea (o recrea) todas las entidades ROS reutilizando buffers estáticos.
+ *
+ * Asume que el transporte UDP ya fue configurado en s_rmw_options.
+ * @return true si todas las entidades se crearon correctamente.
+ */
+static bool ros_entities_create(void)
+{
+    ESP_LOGI(TAG, "[Resilience] Creando entidades ROS...");
+    ESP_LOGI(TAG, "HEAP libre antes de crear entidades: %lu bytes", esp_get_free_heap_size());
+
+    // ── Soporte ────────────────────────────────────────────────────
+    // Se usa manejo manual (no RCCHECK) para garantizar limpieza correcta
+    // de init_options y del struct support en cualquier ruta de error.
+    // Sin esto, un fallo en rclc_support_init_with_options deja el struct
+    // support en estado corrupto y el segundo intento falla INMEDIATAMENTE.
+    rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
+    if (rcl_init_options_init(&init_options, allocator) != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rcl_init_options_init falló");
+        return false;
+    }
+
+    // Construir rmw_options FRESCAS desde las strings persistidas.
+    rmw_init_options_t *rmw_options_ptr = rcl_init_options_get_rmw_init_options(&init_options);
+    if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port, rmw_options_ptr) != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] udp_address config falló");
+        rcl_init_options_fini(&init_options);
+        return false;
+    }
+
+    rcl_ret_t support_rc =
+        rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator);
+    rcl_init_options_fini(&init_options);  // limpiar siempre (éxito o fallo)
+    if (support_rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_support_init_with_options falló: %d", (int)support_rc);
+        RCSOFTCHECK(rclc_support_fini(&support));  // limpiar estado interno corrupto
+        return false;
+    }
+
+    // ── Nodo ───────────────────────────────────────────────────────
+    char node_name[32];
+    snprintf(node_name, sizeof(node_name), "esp32_%02X%02X%02X",
+             mac_address[3], mac_address[4], mac_address[5]);
+    RCCHECK(rclc_node_init_default(&node, node_name, "", &support));
+    ESP_LOGI(TAG, "Nodo recreado: '%s'", node_name);
+
+    // ── Publicador ─────────────────────────────────────────────────
+    RCCHECK(rclc_publisher_init_default(
+        &sensor_data_publisher,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
+        "sensor_data"));
+
+    // Reutilizar buffer estático (NO malloc)
+    data_sequence.data     = sensor_data_array;
+    data_sequence.size     = 5;
+    data_sequence.capacity = 5;
+    sensor_data_msg.data   = data_sequence;
+    sensor_data_msg.layout.dim.data     = NULL;
+    sensor_data_msg.layout.dim.size     = 0;
+    sensor_data_msg.layout.dim.capacity = 0;
+    sensor_data_msg.layout.data_offset  = 0;
+
+    // ── Suscriptor ─────────────────────────────────────────────────
+    RCCHECK(rclc_subscription_init_default(
+        &motor_cmd_subscriber,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+        TOPIC_MOTOR_CMD));
+
+    // Reutilizar buffer estático (NO malloc)
+    motor_cmd_msg.data.data     = motor_cmd_buffer;
+    motor_cmd_msg.data.capacity = sizeof(motor_cmd_buffer);
+    motor_cmd_msg.data.size     = 0;
+
+    // ── Executor ───────────────────────────────────────────────────
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+    RCCHECK(rclc_executor_add_subscription(
+        &executor,
+        &motor_cmd_subscriber,
+        &motor_cmd_msg,
+        &motor_cmd_callback,
+        ON_NEW_DATA));
+
+    initialized = true;
+    ESP_LOGI(TAG, "[Resilience] Entidades ROS creadas. HEAP libre: %lu bytes",
+             esp_get_free_heap_size());
+    return true;
+}
+
+// ========================================
 // FUNCIONES PÚBLICAS
 // ========================================
 
@@ -181,16 +315,45 @@ bool ros_publisher_init(void)
         CONFIG_MICRO_ROS_AGENT_PORT, 
         rmw_options));
     ESP_LOGI(TAG, "Transporte UDP configurado");
+
+    // Persistir IP y puerto como strings (seguro ante cualquier fini posterior).
+    strncpy(s_agent_ip,   CONFIG_MICRO_ROS_AGENT_IP,   sizeof(s_agent_ip)   - 1);
+    strncpy(s_agent_port, CONFIG_MICRO_ROS_AGENT_PORT, sizeof(s_agent_port) - 1);
+    s_rmw_options_ready = true;
 #endif
-    
-    // Crear soporte y establecer conexión
+
+    // ── Espera activa al Agente ANTES del handshake XRCE-DDS ───────
+    // Evita el bloqueo de 10 s (timeout interno del middleware) y que
+    // la tarea muera si el Agente aún no está corriendo al arrancar.
+    ESP_LOGI(TAG, "Esperando al Agente en %s:%s ...", s_agent_ip, s_agent_port);
+    for (;;) {
+        bool agent_up = false;
+        rcl_init_options_t ping_opts = rcl_get_zero_initialized_init_options();
+        if (rcl_init_options_init(&ping_opts, allocator) == RCL_RET_OK) {
+            rmw_init_options_t *ping_rmw = rcl_init_options_get_rmw_init_options(&ping_opts);
+            if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port,
+                                                 ping_rmw) == RCL_RET_OK) {
+                agent_up = (rmw_uros_ping_agent_options(
+                    (int)ROS_AGENT_PING_TIMEOUT_MS, 1, ping_rmw) == RMW_RET_OK);
+            }
+            rcl_init_options_fini(&ping_opts);
+        }
+        if (agent_up) {
+            ESP_LOGI(TAG, "Agente disponible. Iniciando handshake XRCE-DDS...");
+            break;
+        }
+        ESP_LOGW(TAG, "Agente no disponible. Reintentando en %u ms...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
+    }
+
+    // Conectar con el Agente (handshake XRCE-DDS)
     ESP_LOGI(TAG, "Conectando con micro-ROS Agent...");
-    ESP_LOGI(TAG, "Ejecuta en el PC:");
-    ESP_LOGI(TAG, "  ros2 run micro_ros_agent micro_ros_agent udp4 --port %s", 
+    ESP_LOGI(TAG, "  ros2 run micro_ros_agent micro_ros_agent udp4 --port %s",
              CONFIG_MICRO_ROS_AGENT_PORT);
-    
+
     RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
-    
+
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  CONECTADO A MICRO-ROS AGENT!");
     ESP_LOGI(TAG, "========================================");
@@ -327,22 +490,80 @@ void ros_publisher_deinit(void)
     if (!initialized) {
         return;
     }
-    
-    // Limpiar executor
-    rclc_executor_fini(&executor);
-    
-    // Limpiar suscriptor
-    RCSOFTCHECK(rcl_subscription_fini(&motor_cmd_subscriber, &node));
-    
-    // Limpiar publicador
-    RCSOFTCHECK(rcl_publisher_fini(&sensor_data_publisher, &node));
-    
-    // Limpiar nodo
-    RCSOFTCHECK(rcl_node_fini(&node));
-    
-    // Limpiar soporte
-    rclc_support_fini(&support);
-    
-    initialized = false;
+    ros_entities_destroy();
     ESP_LOGI(TAG, "Sistema ROS detenido");
 }
+
+bool ros_agent_check_and_reconnect(void)
+{
+    // Sin IP/puerto configurados no hay nada que hacer.
+    if (!s_rmw_options_ready) {
+        ESP_LOGW(TAG, "[Resilience] IP/puerto del Agente no configurados.");
+        return false;
+    }
+
+    if (initialized) {
+        // ── FASE 1: Ping con reintentos ───────────────────────────────────────
+        // Opciones temporales FRESCAS por cada ping: se llama
+        // rmw_uros_options_set_udp_address desde las strings persistidas,
+        // evitando punteros internos obsoletos de ciclos destroy previos.
+        bool agent_alive = false;
+        for (int attempt = 1; attempt <= ROS_AGENT_MAX_RETRIES; attempt++) {
+            rmw_ret_t ping_ret = RMW_RET_ERROR;
+
+            rcl_init_options_t ping_opts = rcl_get_zero_initialized_init_options();
+            if (rcl_init_options_init(&ping_opts, allocator) == RCL_RET_OK) {
+                rmw_init_options_t *ping_rmw = rcl_init_options_get_rmw_init_options(&ping_opts);
+                if (rmw_uros_options_set_udp_address(s_agent_ip, s_agent_port,
+                                                     ping_rmw) == RCL_RET_OK) {
+                    ping_ret = rmw_uros_ping_agent_options(
+                        (int)ROS_AGENT_PING_TIMEOUT_MS, 1, ping_rmw);
+                }
+                rcl_init_options_fini(&ping_opts);
+            }
+
+            if (ping_ret == RMW_RET_OK) {
+                agent_alive = true;
+                break;
+            }
+
+            ESP_LOGW(TAG, "[Resilience] Ping al Agente fallido (intento %d/%d). "
+                          "Esperando %u ms...",
+                     attempt, ROS_AGENT_MAX_RETRIES,
+                     (unsigned)ROS_AGENT_RETRY_DELAY_MS);
+            vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_RETRY_DELAY_MS));
+        }
+
+        if (agent_alive) {
+            return true;  // Sesión activa, nada que hacer.
+        }
+
+        // ── FASE 2a: Sesión muerta → Destruir en orden inverso ────────────────
+        ESP_LOGW(TAG, "[Resilience] Sesión con el Agente perdida tras %d intentos. "
+                      "Ejecutando hot-reload...",
+                 ROS_AGENT_MAX_RETRIES);
+        ros_entities_destroy();  // initialized = false al salir
+
+        ESP_LOGI(TAG, "[Resilience] Pausa de seguridad (%u ms)...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
+
+    } else {
+        // initialized == false: create falló en ciclo anterior.
+        // Esperar antes de reintentar para dar tiempo al Agente de levantarse
+        // y evitar un bucle tight que no da tiempo al middleware de recuperarse.
+        ESP_LOGI(TAG, "[Resilience] Esperando %u ms antes de reintentar create...",
+                 (unsigned)ROS_AGENT_REINIT_DELAY_MS);
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
+    }
+
+    // ── FASE 2b / Reintento directo: Recrear entidades ───────────────────────
+    if (!ros_entities_create()) {
+        ESP_LOGE(TAG, "[Resilience] Hot-reload FALLÓ. Se reintentará en el próximo ciclo.");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "[Resilience] Hot-reload EXITOSO. Sistema ROS operativo.");
+    return true;
+}
+

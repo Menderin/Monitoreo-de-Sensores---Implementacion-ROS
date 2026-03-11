@@ -61,6 +61,35 @@
 #define PUBLISH_INTERVAL_MS 4000
 
 // ========================================
+// CONFIGURACIÓN DE RED / MONITOR WIFI
+// ========================================
+
+/** Intervalo entre cada chequeo de estado de la red (ms). */
+#define WIFI_MONITOR_INTERVAL_MS      5000U
+
+/** Pausa entre intentos de reconexión consecutivos (ms). */
+#define WIFI_RETRY_DELAY_MS           5000U
+
+/**
+ * Tiempo máximo permitido en estado desconectado antes de llamar a
+ * esp_restart(). Pasados 90 s sin WiFi el driver de red puede quedar
+ * en un estado corrupto; el reinicio es la recuperación más segura.
+ */
+#define WIFI_MAX_RECONNECT_TIME_MS   90000U
+
+/**
+ * Tiempo que espera wifi_reconnect_once() para recibir la IP tras
+ * llamar a esp_wifi_connect(). Cada tick = WIFI_REPLY_POLL_MS ms.
+ */
+#define WIFI_IP_WAIT_MS              10000U
+#define WIFI_IP_POLL_MS                250U
+
+/** Recursos FreeRTOS para la tarea monitor (Core 0 / PRO_CPU). */
+#define WIFI_MONITOR_STACK_SIZE       4096U
+#define WIFI_MONITOR_PRIORITY            2
+#define WIFI_MONITOR_CORE                0
+
+// ========================================
 // CONFIGURACIÓN DE TAREAS
 // ========================================
 
@@ -105,5 +134,24 @@
 
 // Velocidad por defecto
 #define MOTOR_SPEED_DEFAULT  MOTOR_SPEED_FAST
+
+// ========================================
+// RESILIENCIA MICRO-ROS (APP LAYER)
+// ========================================
+
+/** Intervalo entre cada ping al Agente (ms). */
+#define ROS_AGENT_PING_INTERVAL_MS    5000U
+
+/** Timeout de cada intento de ping al Agente (ms). */
+#define ROS_AGENT_PING_TIMEOUT_MS      500U
+
+/** Número de reintentos de ping antes de declarar sesión perdida. */
+#define ROS_AGENT_MAX_RETRIES             5
+
+/** Pausa entre reintentos de ping (ms). */
+#define ROS_AGENT_RETRY_DELAY_MS        500U
+
+/** Pausa de seguridad entre deinit e init durante hot-reload (ms). */
+#define ROS_AGENT_REINIT_DELAY_MS      1500U
 
 #endif // CONFIG_H

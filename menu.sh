@@ -14,6 +14,8 @@ WIFI_ENV="$REPO_DIR/microros-esp/main/versions/wifi/.env"
 SENSOR_NODE="$REPO_DIR/database/ros_sensor_node.py"
 MOTOR_NODE="$REPO_DIR/microros-esp/main/Motores/motor_control_node.py"
 MICROROS_WS="${MICROROS_WS:-$HOME/microros_ws}"
+SCRIPTS_DIR="$REPO_DIR/scripts"
+SERVICES_DIR="$REPO_DIR/services"
 
 # ─── Colores ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -143,6 +145,84 @@ EOF
     read -rp "  Presiona Enter para continuar..." _
 }
 
+# ==============================================================================
+# 1c. Editar credenciales de Telegram
+# ==============================================================================
+edit_telegram_env() {
+    echo ""
+    echo -e "${BOLD}  Credenciales — Notificaciones Telegram${RESET}"
+    echo -e "  Archivo: ${YELLOW}database/.env${RESET}"
+    echo ""
+    echo -e "  Variables requeridas:"
+    echo -e "    ${CYAN}TELEGRAM_BOT_TOKEN${RESET}  — Token del bot (obtenlo de @BotFather)"
+    echo -e "    ${CYAN}TELEGRAM_CHAT_ID${RESET}    — Tu Chat ID (obtenlo de @userinfobot)"
+    echo ""
+
+    # Asegurarse de que database/.env existe
+    if [[ ! -f "$DB_ENV" ]]; then
+        warn ".env de base de datos no encontrado."
+        if [[ -f "$DB_ENV_EXAMPLE" ]]; then
+            info "Creando database/.env desde plantilla..."
+            cp "$DB_ENV_EXAMPLE" "$DB_ENV"
+            success "Creado: database/.env"
+        else
+            error ".env.example no encontrado. Crea database/.env manualmente."
+            read -rp "  Presiona Enter para volver..." _; return
+        fi
+    fi
+
+    # Mostrar valores actuales (enmascarados)
+    local cur_token cur_chat
+    cur_token=$(grep "^TELEGRAM_BOT_TOKEN=" "$DB_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    cur_chat=$(grep "^TELEGRAM_CHAT_ID=" "$DB_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    if [[ -n "$cur_token" ]]; then
+        local masked_token="${cur_token:0:6}****${cur_token: -4}"
+        info "Token actual : ${BOLD}$masked_token${RESET}"
+    else
+        warn "TELEGRAM_BOT_TOKEN no configurado."
+    fi
+    if [[ -n "$cur_chat" ]]; then
+        info "Chat ID actual: ${BOLD}$cur_chat${RESET}"
+    else
+        warn "TELEGRAM_CHAT_ID no configurado."
+    fi
+    echo ""
+
+    # Pedir nuevos valores (Enter = conservar actual)
+    read -rsp "  Nuevo TELEGRAM_BOT_TOKEN (Enter para conservar): " new_token; echo ""
+    read -rp  "  Nuevo TELEGRAM_CHAT_ID   (Enter para conservar): " new_chat
+    echo ""
+
+    # Función helper: upsert una variable en el .env
+    _upsert_env() {
+        local key="$1" val="$2" file="$3"
+        if grep -q "^${key}=" "$file"; then
+            sed -i "s|^${key}=.*|${key}=${val}|" "$file"
+        else
+            echo "${key}=${val}" >> "$file"
+        fi
+    }
+
+    local changed=false
+    if [[ -n "$new_token" ]]; then
+        _upsert_env "TELEGRAM_BOT_TOKEN" "$new_token" "$DB_ENV"
+        changed=true
+    fi
+    if [[ -n "$new_chat" ]]; then
+        _upsert_env "TELEGRAM_CHAT_ID" "$new_chat" "$DB_ENV"
+        changed=true
+    fi
+
+    if $changed; then
+        success "Credenciales de Telegram guardadas en database/.env"
+        warn "Reinicia el servicio smart-alerter para aplicar los cambios:"
+        warn "  sudo systemctl restart smart-alerter"
+    else
+        info "Sin cambios."
+    fi
+    read -rp "  Presiona Enter para continuar..." _
+}
+
 # ─── Helper: leer AGENT_PORT del .env WiFi ────────────────────────────────────
 get_agent_port() {
     local port=8888
@@ -184,10 +264,8 @@ start_agent_only() {
 }
 
 # ─── Helper: ejecutar script Python con entorno ROS limpio (sin conda) ─────────
-# Uso: run_ros_python "/ruta/al/script.py"
 run_ros_python() {
     local script="$1"
-    # --norc --noprofile evita que conda inyecte su PYTHONPATH en el subshell
     bash --norc --noprofile -c "
         source /opt/ros/jazzy/setup.bash
         source '$MICROROS_WS/install/setup.bash'
@@ -238,8 +316,309 @@ start_motor_node() {
 }
 
 # ==============================================================================
-# Submenú: Credenciales
+# 3. ESP32 — lanzar microros.sh
 # ==============================================================================
+launch_esp32() {
+    local script="$REPO_DIR/microros-esp/scripts/microros.sh"
+    if [[ ! -x "$script" ]]; then
+        if [[ -f "$script" ]]; then
+            chmod +x "$script"
+        else
+            error "No se encontró $script"
+            read -rp "  Presiona Enter para volver..." _
+            return
+        fi
+    fi
+    info "Activando entorno ESP-IDF (sin ROS para evitar conflictos en build)..."
+    source_idf
+    "$script"
+}
+
+# ==============================================================================
+# 4. GATEWAY IOT — funciones
+# ==============================================================================
+
+# ── 4a. Ver estado del sistema ─────────────────────────────────────────────────
+gateway_status() {
+    echo ""
+    local status_script="$SCRIPTS_DIR/status.sh"
+    if [[ ! -f "$status_script" ]]; then
+        error "scripts/status.sh no encontrado en $SCRIPTS_DIR"
+        error "Asegúrate de que el repositorio esté completo."
+        read -rp "  Presiona Enter para volver..." _
+        return
+    fi
+    bash "$status_script"
+    echo ""
+    read -rp "  Presiona Enter para volver..." _
+}
+
+# ── 4b. Instalar / actualizar servicios systemd (One-Click) ───────────────────
+deploy_services() {
+    echo ""
+    echo -e "${BOLD}  Instalar servicios systemd — One-Click Deploy${RESET}"
+    echo ""
+
+    # ── Verificación 1: escritura en el sistema de archivos ──────────────────
+    info "Verificando escritura en el sistema de archivos..."
+    local test_file
+    test_file=$(mktemp 2>/dev/null) || {
+        error "El sistema de archivos está en modo solo-lectura (¿SD dañada?)."
+        error "Intenta remontarlo: sudo mount -o remount,rw /"
+        read -rp "  Presiona Enter para volver..." _
+        return 1
+    }
+    rm -f "$test_file"
+    success "Sistema de archivos disponible para escritura."
+
+    # ── Verificación 2: dependencias necesarias ───────────────────────────────
+    info "Verificando dependencias..."
+    local missing=0
+
+    if ! dpkg -l iptables-persistent &>/dev/null 2>&1; then
+        warn "  [!] iptables-persistent NO instalado — el firewall no sobrevivirá reinicios."
+        warn "      Instala con: sudo apt-get install -y iptables-persistent"
+        missing=$((missing + 1))
+    else
+        success "  iptables-persistent: OK"
+    fi
+
+    if ! python3 -c "import dotenv" &>/dev/null 2>&1; then
+        warn "  [!] python3-dotenv NO disponible — el bridge de MongoDB puede fallar."
+        warn "      Instala con: pip3 install python-dotenv --break-system-packages"
+        missing=$((missing + 1))
+    else
+        success "  python3-dotenv: OK"
+    fi
+
+    if [[ $missing -gt 0 ]]; then
+        echo ""
+        warn "$missing dependencia(s) faltante(s). ¿Continuar de todas formas? [s/N]"
+        read -rp "  Respuesta: " ans
+        [[ "$ans" =~ ^[sS]$ ]] || { info "Deploy cancelado."; read -rp "  Presiona Enter..." _; return; }
+    fi
+
+    # ── Dar permisos de ejecución a scripts ──────────────────────────────────
+    info "Aplicando permisos de ejecución a scripts/..."
+    chmod +x "$SCRIPTS_DIR"/*.sh
+    success "Permisos aplicados."
+
+    # ── Generar e instalar los .service desde plantillas ─────────────────────
+    local current_user="$USER"
+    info "Desplegando servicios como usuario: ${BOLD}$current_user${RESET}"
+    info "Scripts en: ${BOLD}$SCRIPTS_DIR${RESET}"
+    echo ""
+
+    for tpl in "$SERVICES_DIR"/smart-*.service.tpl; do
+        [[ -f "$tpl" ]] || continue
+        local svc_name
+        svc_name=$(basename "$tpl" .tpl)   # → smart-agent.service / smart-bridge.service / smart-alerter.service
+        local dest="/etc/systemd/system/$svc_name"
+
+        info "Generando $svc_name ..."
+        sed \
+            -e "s|{{USER}}|${current_user}|g" \
+            -e "s|{{SCRIPTS_DIR}}|${SCRIPTS_DIR}|g" \
+            -e "s|{{REPO_DIR}}|${REPO_DIR}|g" \
+            "$tpl" | sudo tee "$dest" > /dev/null
+
+        sudo chmod 644 "$dest"
+        success "  Instalado → $dest"
+    done
+
+    # ── Recargar systemd y habilitar servicios ────────────────────────────────
+    echo ""
+    info "Recargando daemon systemd..."
+    sudo systemctl daemon-reload
+
+    info "Habilitando e iniciando servicios..."
+    sudo systemctl enable --now smart-agent.service smart-bridge.service smart-alerter.service
+
+    # ── Alias de acceso rápido en ~/.bashrc ───────────────────────────────────
+    local alias_line="alias status='bash \"${SCRIPTS_DIR}/status.sh\"'"
+    if grep -qF "alias status=" "$HOME/.bashrc" 2>/dev/null; then
+        info "Alias 'status' ya existe en ~/.bashrc — sin cambios."
+    else
+        echo "" >> "$HOME/.bashrc"
+        echo "# Gateway Monitoring System — acceso rápido al panel de estado" >> "$HOME/.bashrc"
+        echo "$alias_line" >> "$HOME/.bashrc"
+        success "Alias 'status' añadido a ~/.bashrc"
+        warn "Abre una terminal nueva o ejecuta: source ~/.bashrc"
+    fi
+
+    # ── Post-Deploy Health Check ──────────────────────────────────────────────
+    echo ""
+    info "Esperando 5 segundos para que los servicios arranquen..."
+    sleep 5
+
+    local all_ok=true
+    echo ""
+    echo -e "${BOLD}  [ Post-Deploy Health Check ]${RESET}"
+
+    for svc in smart-agent smart-bridge smart-alerter; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            success "  $svc: ${GREEN}ACTIVO ✓${RESET}"
+        else
+            error "  $svc: ${RED}CAÍDO ✗${RESET}"
+            echo ""
+            warn "  Últimas 5 líneas de log para $svc:"
+            echo -e "${BLUE}  ──────────────────────────────────────${RESET}"
+            sudo journalctl -u "$svc" -n 5 --no-pager 2>/dev/null \
+                | sed 's/^/    /' || true
+            echo -e "${BLUE}  ──────────────────────────────────────${RESET}"
+            echo ""
+            all_ok=false
+        fi
+    done
+
+    echo ""
+    if $all_ok; then
+        success "════════════════════════════════════════════"
+        success "  ¡Gateway activo y saludable!  🟢"
+        success "════════════════════════════════════════════"
+        echo ""
+        warn "¿Abrir el panel de estado ahora para confirmar que todo quedó verde? [S/n]"
+        read -rp "  Respuesta: " view_ans
+        if [[ ! "$view_ans" =~ ^[nN]$ ]]; then
+            bash "$SCRIPTS_DIR/status.sh"
+            echo ""
+        fi
+    else
+        warn "════════════════════════════════════════════"
+        warn "  Uno o más servicios no arrancaron."
+        warn "  Revisa los logs y ejecuta la opción d) para seguirlos en vivo."
+        warn "════════════════════════════════════════════"
+    fi
+
+    read -rp "  Presiona Enter para continuar..." _
+}
+
+# ── 4c. Aplicar reglas de Firewall ────────────────────────────────────────────
+apply_firewall() {
+    echo ""
+    echo -e "${BOLD}  Firewall — Modo Gateway Aislado${RESET}"
+    echo ""
+    echo -e "  ${YELLOW}Este script aplicará reglas iptables con la siguiente topología:${RESET}"
+    echo -e "    ${CYAN}IF_WAN${RESET} (def: eth0)   → Internet / Red Lab  — SSH permitido"
+    echo -e "    ${CYAN}IF_LAN${RESET} (def: wlan0)  → Red Sensores ESP32 — Solo DHCP, DNS, UDP (micro-ROS)"
+    echo -e "    ${CYAN}FORWARD${RESET}              → DESACTIVADO (aislamiento)"
+    echo ""
+    echo -e "  ${YELLOW}Sobreescribir interfaces sin editar el script:${RESET}"
+    echo -e "    export IF_WAN=eth1 IF_LAN=wlan1   (antes de esta opción)"
+    echo ""
+
+    local fw_script="$SCRIPTS_DIR/firewall.sh"
+    if [[ ! -f "$fw_script" ]]; then
+        error "scripts/firewall.sh no encontrado en $SCRIPTS_DIR"
+        read -rp "  Presiona Enter para volver..." _
+        return
+    fi
+
+    warn "¿Confirmas que las interfaces son correctas? [s/N]"
+    read -rp "  Respuesta: " ans
+    if [[ "$ans" =~ ^[sS]$ ]]; then
+        sudo bash "$fw_script"
+    else
+        info "Firewall no aplicado."
+        info "Edita scripts/firewall.sh o exporta IF_WAN/IF_LAN y vuelve a intentarlo."
+    fi
+    echo ""
+    read -rp "  Presiona Enter para continuar..." _
+}
+
+# ── 4d. Seguir logs en vivo ───────────────────────────────────────────────────
+follow_logs() {
+    echo ""
+    echo -e "${BOLD}  Logs en vivo — Gateway${RESET}"
+    echo ""
+    echo -e "  ${CYAN}a)${RESET}  smart-agent"
+    echo -e "  ${CYAN}b)${RESET}  smart-bridge"
+    echo -e "  ${CYAN}c)${RESET}  Ambos servicios"
+    echo ""
+    read -rp "  Opción: " lopt
+    echo ""
+    info "Detener: Ctrl + C"
+    echo ""
+    case "$lopt" in
+        a|A) sudo journalctl -u smart-agent -f --no-pager || true ;;
+        b|B) sudo journalctl -u smart-bridge -f --no-pager || true ;;
+        c|C) sudo journalctl -u smart-agent -u smart-bridge -f --no-pager || true ;;
+        *)   warn "Opción no válida." ;;
+    esac
+    echo ""
+    read -rp "  Presiona Enter para continuar..." _
+}
+
+# ── 4e. Configurar horarios de reportes (Cron) ────────────────────────────────
+configure_cron() {
+    echo ""
+    echo -e "${BOLD}  Configurar Reportes Automáticos — Cron${RESET}"
+    echo ""
+    echo -e "  El script ${CYAN}smart_reporter.py${RESET} se ejecutará automáticamente"
+    echo -e "  a las horas que configures. Cubre ventanas de 12 horas."
+    echo ""
+
+    local reporter_script="$SCRIPTS_DIR/telegram/smart_reporter.py"
+    if [[ ! -f "$reporter_script" ]]; then
+        error "No se encontró: $reporter_script"
+        error "Asegúrate de que el repositorio esté completo."
+        read -rp "  Presiona Enter para volver..." _; return
+    fi
+
+    # Pedir horas con validación
+    local hora_manana hora_tarde
+    while true; do
+        read -rp "  Hora del reporte de MAÑANA [0-23, default: 8]: " hora_manana
+        hora_manana="${hora_manana:-8}"
+        if [[ "$hora_manana" =~ ^[0-9]+$ ]] && (( hora_manana >= 0 && hora_manana <= 23 )); then
+            break
+        fi
+        warn "Hora inválida. Ingresa un número entre 0 y 23."
+    done
+
+    while true; do
+        read -rp "  Hora del reporte de TARDE  [0-23, default: 20]: " hora_tarde
+        hora_tarde="${hora_tarde:-20}"
+        if [[ "$hora_tarde" =~ ^[0-9]+$ ]] && (( hora_tarde >= 0 && hora_tarde <= 23 )); then
+            break
+        fi
+        warn "Hora inválida. Ingresa un número entre 0 y 23."
+    done
+
+    echo ""
+    info "Configurando crontab:"
+    info "  Reporte mañana : ${BOLD}$hora_manana:00${RESET} UTC"
+    info "  Reporte tarde  : ${BOLD}$hora_tarde:00${RESET} UTC"
+    echo ""
+
+    # Eliminar entradas previas de smart_reporter.py (sin tocar el resto del crontab)
+    local tmp_cron
+    tmp_cron=$(mktemp)
+    crontab -l 2>/dev/null | grep -v "smart_reporter\.py" > "$tmp_cron" || true
+
+    # Añadir las nuevas reglas
+    echo "0 ${hora_manana} * * * /usr/bin/python3 ${reporter_script} >> /tmp/reporter.log 2>&1" >> "$tmp_cron"
+    echo "0 ${hora_tarde}  * * * /usr/bin/python3 ${reporter_script} >> /tmp/reporter.log 2>&1" >> "$tmp_cron"
+
+    crontab "$tmp_cron"
+    rm -f "$tmp_cron"
+
+    echo ""
+    success "Crontab actualizado. Sin duplicados."
+    echo ""
+    echo -e "  ${BOLD}Crontab actual (entradas del reporter):${RESET}"
+    crontab -l 2>/dev/null | grep "smart_reporter" | sed 's/^/    /'
+    echo ""
+    warn "Nota: las horas son en la zona horaria del sistema (UTC por defecto en Raspberry Pi OS)."
+    warn "Para ajustar a tu zona horaria local, ejecuta: sudo dpkg-reconfigure tzdata"
+    read -rp "  Presiona Enter para continuar..." _
+}
+
+# ==============================================================================
+# Submenús
+# ==============================================================================
+
+# ── Submenú: Credenciales ─────────────────────────────────────────────────────
 menu_credentials() {
     while true; do
         show_header
@@ -247,6 +626,7 @@ menu_credentials() {
         echo ""
         echo "    a)  Base de datos (database/.env)"
         echo "    b)  WiFi / micro-ROS (microros-esp/main/.env)"
+        echo "    c)  Notificaciones Telegram (Bot Token / Chat ID)"
         echo ""
         echo "    0)  Volver"
         echo ""
@@ -254,15 +634,14 @@ menu_credentials() {
         case "$opt" in
             a|A) edit_db_env ;;
             b|B) edit_wifi_env ;;
+            c|C) edit_telegram_env ;;
             0)   return ;;
             *)   warn "Opción no válida." ; sleep 1 ;;
         esac
     done
 }
 
-# ==============================================================================
-# Submenú: Agentes
-# ==============================================================================
+# ── Submenú: Agentes (interactivos) ──────────────────────────────────────────
 menu_agents() {
     while true; do
         show_header
@@ -285,23 +664,31 @@ menu_agents() {
     done
 }
 
-# ==============================================================================
-# 3. ESP32 — lanzar microros.sh
-# ==============================================================================
-launch_esp32() {
-    local script="$REPO_DIR/microros-esp/scripts/microros.sh"
-    if [[ ! -x "$script" ]]; then
-        if [[ -f "$script" ]]; then
-            chmod +x "$script"
-        else
-            error "No se encontró $script"
-            read -rp "  Presiona Enter para volver..." _
-            return
-        fi
-    fi
-    info "Activando entorno ESP-IDF (sin ROS para evitar conflictos en build)..."
-    source_idf
-    "$script"
+# ── Submenú: Gateway IoT ──────────────────────────────────────────────────────
+menu_gateway() {
+    while true; do
+        show_header
+        echo -e "  ${BOLD}4. Gateway IoT — Panel de control${RESET}"
+        echo ""
+        echo "    a)  Ver estado del sistema"
+        echo "    b)  Instalar / actualizar servicios systemd"
+        echo "    c)  Aplicar reglas de Firewall"
+        echo "    d)  Seguir logs en vivo"
+        echo "    e)  Configurar horarios de reportes (Cron)"
+        echo ""
+        echo "    0)  Volver"
+        echo ""
+        read -rp "  Opción: " opt
+        case "$opt" in
+            a|A) gateway_status ;;
+            b|B) deploy_services ;;
+            c|C) apply_firewall ;;
+            d|D) follow_logs ;;
+            e|E) configure_cron ;;
+            0)   return ;;
+            *)   warn "Opción no válida." ; sleep 1 ;;
+        esac
+    done
 }
 
 # ==============================================================================
@@ -313,6 +700,7 @@ main_menu() {
         echo "  1)  Modificar credenciales"
         echo "  2)  Iniciar agentes"
         echo "  3)  Desplegar opciones ESP32"
+        echo "  4)  Gateway IoT — Panel de control"
         echo ""
         echo "  0)  Salir"
         echo ""
@@ -321,6 +709,7 @@ main_menu() {
             1) menu_credentials ;;
             2) menu_agents ;;
             3) launch_esp32 ;;
+            4) menu_gateway ;;
             0) echo "" ; info "Suerte con esas esp32!." ; echo "" ; exit 0 ;;
             *) warn "Opción no válida." ; sleep 1 ;;
         esac

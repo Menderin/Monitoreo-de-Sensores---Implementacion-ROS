@@ -45,4 +45,19 @@ bool ros_executor_spin_some(uint64_t timeout_ns);
  */
 void ros_publisher_deinit(void);
 
+/**
+ * @brief Verifica si el Agente ROS es alcanzable; ejecuta hot-reload si la
+ *        sesión está perdida. Debe llamarse periódicamente desde el loop
+ *        principal (recomendado: cada ROS_AGENT_PING_INTERVAL_MS ms).
+ *
+ * Flujo interno:
+ *  1. Ping al Agente con rmw_uros_ping_agent_options() (incluye IP/puerto UDP).
+ *  2. Hasta ROS_AGENT_MAX_RETRIES reintentos con pausa entre cada uno.
+ *  3. Si todos fallan: destroy → pausa de seguridad → create (hot-reload).
+ *
+ * @return true  Si el sistema ROS está operativo (ping OK o hot-reload exitoso).
+ * @return false Si el hot-reload también falló; se reintentará en el próximo ciclo.
+ */
+bool ros_agent_check_and_reconnect(void);
+
 #endif // ROS_PUBLISHER_H
