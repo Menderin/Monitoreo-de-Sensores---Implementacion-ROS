@@ -26,6 +26,12 @@ header()  { echo -e "\n${BOLD}${CYAN}══════════════�
             echo -e "${BOLD}${CYAN}  $*${RESET}"
             echo -e "${BOLD}${CYAN}══════════════════════════════════════════${RESET}"; }
 
+# ─── Opciones APT para redes restrictivas (CGNAT / universitarias) ────────────
+# ForceIPv4   : evita bloqueos IPv6 en redes móviles/universitarias.
+# Verify-Peer / Verify-Host = false: evita errores de certificado durante
+#   la instalación inicial. NO deshabilita TLS en tiempo de ejecución.
+APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"
+
 # ─── Usuario real (funciona con o sin sudo) ───────────────────────────────────
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
@@ -85,12 +91,12 @@ if [[ -f /opt/ros/jazzy/setup.bash ]]; then
 else
     info "Configurando repositorio de ROS 2..."
 
-    sudo apt-get update -qq
-    sudo apt-get install -y --no-install-recommends \
+    sudo apt-get $APT_OPTS update -qq
+    sudo apt-get $APT_OPTS install -y --no-install-recommends \
         software-properties-common curl gnupg lsb-release
 
     # Locale UTF-8 (requerido por ROS)
-    sudo apt-get install -y locales
+    sudo apt-get $APT_OPTS install -y locales
     sudo locale-gen en_US en_US.UTF-8
     sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
     export LANG=en_US.UTF-8
@@ -103,10 +109,11 @@ else
         https://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
         | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
 
-    sudo apt-get update -qq
+    sudo apt-get $APT_OPTS update -qq
 
     info "Instalando ros-jazzy-ros-base (puede tardar varios minutos)..."
-    sudo apt-get install -y \
+    sudo apt-get $APT_OPTS --fix-broken install -y
+    sudo apt-get $APT_OPTS install -y \
         ros-jazzy-ros-base \
         ros-jazzy-rmw-cyclonedds-cpp \
         ros-jazzy-std-msgs \
@@ -165,8 +172,8 @@ if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
     fi
 else
     info "Instalando dependencias de compilación..."
-    sudo apt-get update -qq
-    sudo apt-get install -y --no-install-recommends \
+    sudo apt-get $APT_OPTS update -qq
+    sudo apt-get $APT_OPTS install -y --no-install-recommends \
         python3-pip \
         python3-dev \
         python3-setuptools \
@@ -220,12 +227,13 @@ fi
 # ==============================================================================
 header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
 
-_idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1)
+_idf_py_env=$(ls -d $HOME/.espressif/python_env/idf*/bin/python3 2>/dev/null | head -1 || true)
 if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
     success "ESP-IDF ya instalado en $ESP_IDF_DIR"
 else
     info "Instalando dependencias del sistema para ESP-IDF..."
-    apt-get install -y --no-install-recommends \
+    sudo apt-get $APT_OPTS --fix-broken install -y
+    sudo apt-get $APT_OPTS install -y --no-install-recommends \
         git wget flex bison gperf cmake ninja-build ccache \
         libffi-dev libssl-dev dfu-util libusb-1.0-0 \
         python3-venv python3-pip
