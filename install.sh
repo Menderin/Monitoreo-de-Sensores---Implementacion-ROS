@@ -239,10 +239,10 @@ else
         python3-venv python3-pip
 
     if [[ ! -f "$ESP_IDF_DIR/export.sh" ]]; then
-        info "Clonando ESP-IDF $ESP_IDF_VERSION en $ESP_IDF_DIR ..."
+        info "Clonando ESP-IDF $ESP_IDF_VERSION (shallow — sin historial)..."
         mkdir -p "$REAL_HOME/esp"
         chown "$REAL_USER:$REAL_USER" "$REAL_HOME/esp"
-        sudo -u "$REAL_USER" git clone -b "$ESP_IDF_VERSION" --recursive \
+        sudo -u "$REAL_USER" git clone -b "$ESP_IDF_VERSION" --depth 1 --shallow-submodules --recursive \
             https://github.com/espressif/esp-idf.git "$ESP_IDF_DIR"
     else
         info "Repositorio ESP-IDF ya clonado — completando instalación de herramientas..."
@@ -352,6 +352,40 @@ fi
 # ==============================================================================
 # Resumen final
 # ==============================================================================
+# ==============================================================================
+# 7/7  Inyectar sources en ~/.bashrc  (anti-duplicado)
+# ==============================================================================
+header "7/7  Configurando ~/.bashrc"
+
+_bashrc="$REAL_HOME/.bashrc"
+_ros_source="source /opt/ros/jazzy/setup.bash"
+_uros_source="source $MICROROS_WS/install/setup.bash"
+
+info "Verificando entradas en $_bashrc ..."
+
+if ! grep -qF "$_ros_source" "$_bashrc" 2>/dev/null; then
+    echo ""                                                   >> "$_bashrc"
+    echo "# ── ROS 2 Jazzy — añadido por install.sh ──────" >> "$_bashrc"
+    echo "$_ros_source"                                       >> "$_bashrc"
+    success "  Añadido: $_ros_source"
+else
+    info "  Ya presente: $_ros_source"
+fi
+
+if ! grep -qF "$_uros_source" "$_bashrc" 2>/dev/null; then
+    echo "# ── micro-ROS workspace ───────────────────────" >> "$_bashrc"
+    echo "$_uros_source"                                     >> "$_bashrc"
+    success "  Añadido: $_uros_source"
+else
+    info "  Ya presente: $_uros_source"
+fi
+
+# Asegurar que el .bashrc pertenece al usuario real (no a root)
+chown "$REAL_USER:$REAL_USER" "$_bashrc" 2>/dev/null || true
+
+echo ""
+success "~/.bashrc actualizado. Abre una terminal nueva o ejecuta: source ~/.bashrc"
+
 echo ""
 success "══════════════════════════════════════════════"
 success "  ¡Instalación completada!"
