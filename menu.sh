@@ -295,11 +295,18 @@ configure_hotspot() {
     echo -e "  Configura los ESP32 con ${CYAN}AGENT_IP=10.42.0.1${RESET} en el .env de WiFi (opción 1b)."
     echo ""
 
-    # Verificar nmcli (NetworkManager)
+    # Verificar nmcli (NetworkManager) — instalar si no está disponible
     if ! command -v nmcli &>/dev/null; then
-        error "nmcli no encontrado. Este sistema no usa NetworkManager."
-        error "Instálalo con: sudo apt-get install -y network-manager"
-        read -rp "  Presiona Enter para volver..." _; return
+        warn "nmcli no encontrado. Instalando network-manager..."
+        sudo apt-get update -qq
+        sudo apt-get install -y network-manager
+        sudo systemctl enable --now NetworkManager
+        sleep 2  # Dar tiempo al servicio para arrancar
+        if ! command -v nmcli &>/dev/null; then
+            error "No se pudo instalar nmcli. Verifica tu conexión y permisos."
+            read -rp "  Presiona Enter para volver..." _; return
+        fi
+        success "NetworkManager instalado y activo."
     fi
 
     # Leer SSID y contraseña del .env WiFi (si están configurados)
@@ -311,30 +318,69 @@ configure_hotspot() {
         [[ -n "$_ssid" && "$_ssid" != "TU_RED_WIFI"    ]] && ssid="$_ssid"
         [[ -n "$_pass" && "$_pass" != "TU_CONTRASEÑA"  ]] && pass="$_pass"
     fi
+    # Nombre interno de la conexión NetworkManager (dinámico)
+    local ap_con_name="${ssid}-AP"
+
+    # Interfaz WiFi (configurable; por defecto wlan0)
+    local interface="wlan0"
 
     echo -e "  ${BOLD}Configuración para el AP:${RESET}"
     echo -e "    SSID     : ${CYAN}$ssid${RESET}"
     echo -e "    Password : ${CYAN}$pass${RESET}"
-    echo -e "    Interfaz : ${CYAN}wlan0${RESET}"
+    echo -e "    Interfaz : ${CYAN}$interface${RESET}"
     echo -e "    IP GW    : ${CYAN}10.42.0.1/24${RESET}"
     echo ""
 
     read -rp "  ¿Crear / actualizar el hotspot con esta configuración? [S/n]: " ans
     [[ "$ans" =~ ^[nN]$ ]] && { info "Operación cancelada."; read -rp "  Presiona Enter..." _; return; }
 
-    info "Eliminando conexión 'BioFloc-AP' anterior (si existe)..."
-    sudo nmcli con delete "BioFloc-AP" 2>/dev/null || true
+    # ── Pre-vuelo 1: Validación de hardware ──────────────────────────────────
+    info "Verificando interfaz WiFi '$interface'..."
+    if ! ip link show "$interface" &>/dev/null; then
+        error "Interfaz '$interface' no encontrada."
+        error "¿El hardware WiFi está conectado? Verifica con: ip link show"
+        warn  "Si tu adaptador usa otro nombre (ej: wlp2s0), ajusta la variable 'interface' en este script."
+        read -rp "  Presiona Enter para volver..." _; return
+    fi
+    success "  Interfaz '$interface' detectada."
+
+    # ── Pre-vuelo 2: Delegar interfaz a NetworkManager (anti-Netplan) ─────────
+    local netplan_nm="/etc/netplan/99-networkmanager.yaml"
+    if [[ ! -f "$netplan_nm" ]]; then
+        info "Delegando '$interface' a NetworkManager en Netplan..."
+        sudo tee "$netplan_nm" > /dev/null <<'NETPLAN'
+network:
+  version: 2
+  renderer: NetworkManager
+NETPLAN
+        sudo chmod 600 "$netplan_nm"
+        info "Aplicando configuración Netplan..."
+        sudo netplan apply 2>/dev/null || true
+        sudo systemctl restart NetworkManager
+        sleep 3  # Esperar que NM retome el control de las interfaces
+        success "  Netplan configurado. NetworkManager controla '$interface'."
+    else
+        info "  Netplan ya delega a NetworkManager ($netplan_nm)."
+    fi
+
+    # ── Pre-vuelo 3: Liberar antena WiFi de conexiones previas ────────────────
+    info "Liberando interfaz '$interface' de conexiones activas..."
+    sudo nmcli device disconnect "$interface" 2>/dev/null || true
     sleep 1
 
-    info "Creando punto de acceso..."
-    if sudo nmcli con add type wifi ifname wlan0 con-name "BioFloc-AP" autoconnect yes ssid "$ssid" \
-        && sudo nmcli con modify "BioFloc-AP" \
+    info "Eliminando conexión '${ap_con_name}' anterior (si existe)..."
+    sudo nmcli con delete "${ap_con_name}" 2>/dev/null || true
+    sleep 1
+
+    info "Creando punto de acceso '${ap_con_name}'..."
+    if sudo nmcli con add type wifi ifname "$interface" con-name "${ap_con_name}" autoconnect yes ssid "$ssid" \
+        && sudo nmcli con modify "${ap_con_name}" \
             802-11-wireless.mode ap \
             802-11-wireless-security.key-mgmt wpa-psk \
             802-11-wireless-security.psk "$pass" \
             ipv4.method shared \
             ipv4.addresses "10.42.0.1/24" \
-        && sudo nmcli con up "BioFloc-AP"; then
+        && sudo nmcli con up "${ap_con_name}"; then
         echo ""
         success "════════════════════════════════════════════"
         success "  ¡Hotspot activo!  📡"
@@ -343,8 +389,9 @@ configure_hotspot() {
         info "Asegúrate de que AGENT_IP=10.42.0.1 en el .env de WiFi (opción 1b)."
     else
         error "No se pudo crear el punto de acceso."
-        warn  "Verifica que wlan0 exista: ip link show wlan0"
+        warn  "Verifica que '$interface' exista: ip link show $interface"
         warn  "Verifica que NetworkManager esté activo: systemctl status NetworkManager"
+        warn  "Si Netplan acaba de aplicarse, intenta de nuevo en 10 segundos."
     fi
     echo ""
     read -rp "  Presiona Enter para continuar..." _
