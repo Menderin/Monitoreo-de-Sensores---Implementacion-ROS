@@ -28,9 +28,12 @@ header()  { echo -e "\n${BOLD}${CYAN}══════════════�
 
 # ─── Opciones APT para redes restrictivas (CGNAT / universitarias) ────────────
 # ForceIPv4   : evita bloqueos IPv6 en redes móviles/universitarias.
-# Verify-Peer / Verify-Host = false: evita errores de certificado durante
-#   la instalación inicial. NO deshabilita TLS en tiempo de ejecución.
-APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"
+# Para redes con problemas de certificados: INSECURE_APT=1 ./install.sh
+APT_OPTS="-o Acquire::ForceIPv4=true"
+if [[ "${INSECURE_APT:-0}" == "1" ]]; then
+    warn "INSECURE_APT=1 → Verificación TLS de APT deshabilitada (no recomendado)"
+    APT_OPTS+=" -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"
+fi
 
 # ─── Usuario real (funciona con o sin sudo) ───────────────────────────────────
 REAL_USER="${SUDO_USER:-$USER}"
@@ -67,7 +70,7 @@ fi
 # ==============================================================================
 # 1. Verificar Ubuntu 24.04
 # ==============================================================================
-header "1/7  Verificando sistema operativo"
+header "1/8  Verificando sistema operativo"
 
 [[ -f /etc/os-release ]] || error "No se puede determinar el sistema operativo."
 source /etc/os-release
@@ -84,7 +87,7 @@ success "Ubuntu $VERSION_ID detectado."
 # ==============================================================================
 # 2. Instalar ROS 2 Jazzy
 # ==============================================================================
-header "2/7  Instalando ROS 2 Jazzy"
+header "2/8  Instalando ROS 2 Jazzy"
 
 if [[ -f /opt/ros/jazzy/setup.bash ]]; then
     success "ROS 2 Jazzy ya está instalado."
@@ -146,7 +149,7 @@ set +u; source /opt/ros/jazzy/setup.bash; set -u
 # ==============================================================================
 # 3. Instalar micro-ROS Agent (compilar desde fuente con colcon)
 # ==============================================================================
-header "3/7  Instalando micro-ROS Agent"
+header "3/8  Instalando micro-ROS Agent"
 
 # Verificar si ya existe y funciona
 if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
@@ -225,9 +228,9 @@ fi
 # ==============================================================================
 # 4. Instalar ESP-IDF
 # ==============================================================================
-header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
+header "4/8  Instalando ESP-IDF ($ESP_IDF_VERSION)"
 
-_idf_py_env=$(ls -d $HOME/.espressif/python_env/idf*/bin/python3 2>/dev/null | head -1 || true)
+_idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1 || true)
 if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
     success "ESP-IDF ya instalado en $ESP_IDF_DIR"
 else
@@ -272,7 +275,7 @@ fi
 # ==============================================================================
 # 5. Instalar dependencias Python
 # ==============================================================================
-header "5/7  Instalando dependencias Python"
+header "5/8  Instalando dependencias Python"
 
 # Usar pip con --break-system-packages (Ubuntu 24.04 PEP 668)
 PIP_FLAGS="--break-system-packages --quiet"
@@ -293,7 +296,7 @@ python3 -c "import pymongo; import dotenv; import certifi; import numpy; import 
 # ==============================================================================
 # 6. Clonar / verificar repositorio
 # ==============================================================================
-header "6/7  Preparando repositorio"
+header "6/8  Preparando repositorio"
 
 # Detectar si ya estamos dentro del proyecto
 if [[ -f "$(pwd)/database/ros_sensor_node.py" && -d "$(pwd)/.git" ]]; then
@@ -316,7 +319,7 @@ cd "$INSTALL_DIR"
 # ==============================================================================
 # 7. Configurar credenciales MongoDB
 # ==============================================================================
-header "7/7  Configuración de credenciales"
+header "7/8  Configuración de credenciales"
 
 if [[ -f "database/.env" ]]; then
     success "database/.env ya existe."
@@ -353,9 +356,9 @@ fi
 # Resumen final
 # ==============================================================================
 # ==============================================================================
-# 7/7  Inyectar sources en ~/.bashrc  (anti-duplicado)
+# 8/8  Inyectar sources en ~/.bashrc  (anti-duplicado)
 # ==============================================================================
-header "7/7  Configurando ~/.bashrc"
+header "8/8  Configurando ~/.bashrc"
 
 _bashrc="$REAL_HOME/.bashrc"
 _ros_source="source /opt/ros/jazzy/setup.bash"

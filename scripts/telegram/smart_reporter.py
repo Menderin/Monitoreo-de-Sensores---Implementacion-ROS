@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from pathlib import Path
 from pymongo import MongoClient
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -9,10 +10,10 @@ from dotenv import load_dotenv
 # ==========================================
 # 1. CONFIGURACIÓN DE ENTORNO
 # ==========================================
-# Ruta dinámica al .env (relativa a la ubicación de este script)
-SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-env_path = os.path.join(SCRIPT_DIR, '..', '..', '..', 'database', '.env')
-env_path = os.path.realpath(env_path)
+# Ruta dinámica al .env (scripts/telegram/ → repo_root/database/.env)
+env_path = Path(__file__).resolve().parents[2] / 'database' / '.env'
+if not env_path.exists():
+    raise FileNotFoundError(f".env no encontrado: {env_path}")
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -38,7 +39,7 @@ def guardar_estado(estado):
 
 def enviar_telegram(mensaje):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensaje}
+    payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     respuesta = requests.post(url, json=payload, timeout=10)
     respuesta.raise_for_status()
 

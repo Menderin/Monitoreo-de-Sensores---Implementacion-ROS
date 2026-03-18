@@ -309,14 +309,28 @@ configure_hotspot() {
         success "NetworkManager instalado y activo."
     fi
 
-    # Leer SSID y contraseña del .env WiFi (si están configurados)
-    local ssid="BioFloc-Sensors" pass="biofloc2024"
+    # Leer SSID y contraseña del .env WiFi — NO hay fallback hardcodeado
+    local ssid="" pass=""
     if [[ -f "$WIFI_ENV" ]]; then
         local _ssid _pass
         _ssid=$(grep "^WIFI_SSID="     "$WIFI_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
         _pass=$(grep "^WIFI_PASSWORD=" "$WIFI_ENV" | cut -d'=' -f2 || true)
         [[ -n "$_ssid" && "$_ssid" != "TU_RED_WIFI"    ]] && ssid="$_ssid"
         [[ -n "$_pass" && "$_pass" != "TU_CONTRASEÑA"  ]] && pass="$_pass"
+    fi
+
+    # Si no hay credenciales seguras, pedir por teclado o abortar
+    if [[ -z "$ssid" || -z "$pass" ]]; then
+        warn "No se encontraron credenciales WiFi seguras en el .env."
+        warn "No se usarán contraseñas por defecto por seguridad."
+        echo ""
+        read -rp "  Ingresa el SSID del Hotspot (o Enter para cancelar): " ssid
+        [[ -z "$ssid" ]] && { info "Operación cancelada. Configura el .env primero (opción 1b)."; read -rp "  Presiona Enter..." _; return; }
+        read -rsp "  Ingresa la contraseña del Hotspot (mínimo 8 caracteres): " pass; echo ""
+        if [[ ${#pass} -lt 8 ]]; then
+            error "La contraseña debe tener al menos 8 caracteres (requisito WPA)."
+            read -rp "  Presiona Enter para volver..." _; return
+        fi
     fi
     # Nombre interno de la conexión NetworkManager (dinámico)
     local ap_con_name="${ssid}-AP"
@@ -347,6 +361,33 @@ configure_hotspot() {
     # ── Pre-vuelo 2: Delegar interfaz a NetworkManager (anti-Netplan) ─────────
     local netplan_nm="/etc/netplan/99-networkmanager.yaml"
     if [[ ! -f "$netplan_nm" ]]; then
+        # Backup de configuración Netplan existente
+        local netplan_backup="/etc/netplan/backup-$(date +%Y%m%d-%H%M%S)"
+        if ls /etc/netplan/*.yaml &>/dev/null; then
+            info "Creando backup de Netplan existente en $netplan_backup/ ..."
+            sudo mkdir -p "$netplan_backup"
+            sudo cp /etc/netplan/*.yaml "$netplan_backup/" 2>/dev/null || true
+            success "  Backup creado: $netplan_backup/"
+        fi
+
+        # Verificar si hay un renderer distinto configurado
+        local current_renderer
+        current_renderer=$(grep -rh 'renderer:' /etc/netplan/*.yaml 2>/dev/null | awk '{print $2}' | head -1 || true)
+        if [[ -n "$current_renderer" && "$current_renderer" != "NetworkManager" ]]; then
+            echo ""
+            warn "════════════════════════════════════════════════════════════"
+            warn "  ¡ATENCIÓN! Ya hay un renderer configurado: $current_renderer"
+            warn "  Cambiar a NetworkManager podría afectar tu conectividad (SSH)."
+            warn "  Se creó un backup en: $netplan_backup/"
+            warn "════════════════════════════════════════════════════════════"
+            echo ""
+            read -rp "  ¿Continuar y sobrescribir con NetworkManager? [s/N]: " confirm_renderer
+            if [[ ! "$confirm_renderer" =~ ^[sS]$ ]]; then
+                info "Operación cancelada. Netplan no fue modificado."
+                read -rp "  Presiona Enter para volver..." _; return
+            fi
+        fi
+
         info "Delegando '$interface' a NetworkManager en Netplan..."
         sudo tee "$netplan_nm" > /dev/null <<'NETPLAN'
 network:
