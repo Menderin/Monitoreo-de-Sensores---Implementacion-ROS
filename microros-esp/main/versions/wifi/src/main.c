@@ -115,7 +115,7 @@ void app_main(void)
     network_manager_start_monitor();
     
     // 2. Inicializar sistema de sensores
-    ESP_LOGI(TAG, "Paso 2/3: Inicializando sensores...");
+    ESP_LOGI(TAG, "Paso 2/4: Inicializando sensores...");
     if (!sensor_manager_init()) {
         ESP_LOGE(TAG, "Error al inicializar sensores. Abortando.");
         return;

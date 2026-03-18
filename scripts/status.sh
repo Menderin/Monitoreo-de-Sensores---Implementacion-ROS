@@ -74,7 +74,7 @@ fi
 
 # ── 4. Servicios systemd ──────────────────────────────────
 echo -e "\n${B}${BOLD}[ Servicios systemd ]${NC}"
-for svc in smart-agent smart-bridge; do
+for svc in smart-agent smart-bridge smart-alerter; do
     if systemctl is-active --quiet "$svc" 2>/dev/null; then
         # Tiempo desde que está activo
         SINCE=$(systemctl show "$svc" -p ActiveEnterTimestamp 2>/dev/null \

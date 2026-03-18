@@ -81,8 +81,8 @@ sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 67:68 --sport 67:68 -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 53 -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p tcp --dport 53 -j ACCEPT
 
-# micro-ROS UDP: el Agent escucha en UDP 8888; permite todo UDP de la red de sensores
-sudo iptables -A INPUT -i "$IF_LAN" -p udp -j ACCEPT
+# micro-ROS UDP: el Agent escucha en UDP 8888; solo permite ese puerto
+sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 8888 -j ACCEPT
 
 # Ping desde sensores: diagnóstico básico
 sudo iptables -A INPUT -i "$IF_LAN" -p icmp -j ACCEPT

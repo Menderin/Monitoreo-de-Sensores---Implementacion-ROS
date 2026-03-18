@@ -40,7 +40,7 @@ ROS_SETUP="/opt/ros/jazzy/setup.bash"
 MICROROS_WS="$HOME/microros_ws"
 ESP_PORT="/dev/ttyUSB0"
 BAUDRATE="115200"
-ENV_FILE="$PROJECT_DIR/main/.env"
+ENV_FILE="$PROJECT_DIR/main/versions/wifi/.env"
 AGENT_PORT=8888
 
 # Colores
@@ -355,7 +355,7 @@ generate_wifi_config() {
     fi
     
     info "Generando wifi_config.h desde .env..."
-    python3 "$PROJECT_DIR/main/generate_wifi_config.py"
+    python3 "$PROJECT_DIR/main/versions/wifi/generate_wifi_config.py"
     
     if [ $? -eq 0 ]; then
         success "wifi_config.h generado correctamente"

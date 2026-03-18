@@ -320,6 +320,12 @@ bool ros_publisher_init(void)
     strncpy(s_agent_ip,   CONFIG_MICRO_ROS_AGENT_IP,   sizeof(s_agent_ip)   - 1);
     strncpy(s_agent_port, CONFIG_MICRO_ROS_AGENT_PORT, sizeof(s_agent_port) - 1);
     s_rmw_options_ready = true;
+#else
+    // Sin middleware XRCE-DDS: inicializar strings a valores por defecto
+    // para evitar lecturas de memoria sin inicializar en el ping loop.
+    strncpy(s_agent_ip,   "0.0.0.0", sizeof(s_agent_ip)   - 1);
+    strncpy(s_agent_port, "8888",    sizeof(s_agent_port) - 1);
+    s_rmw_options_ready = false;
 #endif
 
     // ── Espera activa al Agente ANTES del handshake XRCE-DDS ───────
