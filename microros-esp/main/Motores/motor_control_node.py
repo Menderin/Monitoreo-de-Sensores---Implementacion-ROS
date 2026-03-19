@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
 """
-Nodo ROS 2 para control de motores DC con teclado y velocidad variable.
-
-Este nodo:
-- Publica comandos de motor al topic /motor_commands
-- Captura teclas A/D (dirección) y 1/2/3 (velocidad) desde el teclado
-- Independiente del sistema de sensores
+Nodo ROS 2 — Control dual de motores DC con teclado.
 
 Controles:
-    A - Izquierda
-    D - Derecha
-    S - Detener
-    1 - Velocidad Lenta (40%)
-    2 - Velocidad Media (70%)
-    3 - Velocidad Rápida (100%)
-    Q - Salir
+    M / Tab → Cambiar motor activo (M1 ↔ M2)
+    A       → Izquierda
+    D       → Derecha
+    S       → Detener
+    W       → Velocidad -10%
+    E       → Velocidad +10%
+    1       → 40%  (Lenta)
+    2       → 70%  (Media)
+    3       → 100% (Rápida)
+    I       → Mostrar estado
+    Q       → Salir
 
-Uso:
-    python3 motor_control_node.py
+Comandos publicados en /motor_commands (String):
+    LEFT | RIGHT | STOP
+    SPEED_SET_<n>        (n = porcentaje 0-100)
+    SELECT_MOTOR_<n>     (n = 1 o 2)
 """
 
 import sys
@@ -27,7 +28,6 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 
-# Importar para keyboard input (Unix/Linux)
 try:
     import termios
     import tty
@@ -35,197 +35,179 @@ try:
 except ImportError:
     KEYBOARD_AVAILABLE = False
 
+MOTOR_LABELS = {1: "MOTOR 1  (GPIO 25/26/14)",
+                2: "MOTOR 2  (GPIO 27/33/32)"}
+
+
+def _indicator(active: int) -> str:
+    return ("[ M1 ] <── activo     [ M2 ]" if active == 1
+            else "[ M1 ]     activo ──> [ M2 ]")
+
 
 class MotorControlNode(Node):
-    """
-    Nodo ROS 2 dedicado al control de motores via teclado con velocidad variable.
-    """
-    
+
     def __init__(self):
         super().__init__('motor_control_node')
-        
-        # ═══════════════════════════════════════════════════════════
-        # PUBLICADOR DE COMANDOS
-        # ═══════════════════════════════════════════════════════════
-        self.pub_motor_commands = self.create_publisher(
-            String,
-            '/motor_commands',
-            10
-        )
-        
-        # Estado del motor
-        self.motor_state = "STOPPED"  # STOPPED, LEFT, RIGHT
-        self.current_speed_percent = 100  # Velocidad inicial
-        
-        # ═══════════════════════════════════════════════════════════
-        # CONTROL DE TECLADO
-        # ═══════════════════════════════════════════════════════════
-        self._keyboard_active = False
+
+        self.pub = self.create_publisher(String, '/motor_commands', 10)
+
+        self.motor_state   = "STOPPED"
+        self.speed_pct     = 100
+        self.active_motor  = 1          # 1 o 2
+
+        self._running = False
         if KEYBOARD_AVAILABLE:
-            self._keyboard_active = True
-            self._keyboard_thread = threading.Thread(
-                target=self._keyboard_listener,
-                daemon=True
-            )
-            self._keyboard_thread.start()
-            self.get_logger().info("Teclado activado - Presiona A/D (dirección) y W/E (velocidad)")
+            self._running = True
+            threading.Thread(target=self._loop, daemon=True).start()
+            self.get_logger().info("Teclado activo")
         else:
-            self.get_logger().warn("Módulo termios no disponible - Teclado deshabilitado")
-        
-        self.get_logger().info("Nodo de control de motor iniciado")
-        self.get_logger().info(f"   Publicando a: /motor_commands (String)")
-    
-    def _getch(self):
-        """Lee un solo carácter del teclado sin echo (Unix/Linux)."""
+            self.get_logger().warn("termios no disponible — teclado deshabilitado")
+
+        self.get_logger().info("Publicando en /motor_commands")
+
+    # ── helpers ─────────────────────────────────────────────
+
+    def _getch(self) -> str:
         fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
+        old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            ch = sys.stdin.read(1)
+            return sys.stdin.read(1)
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
-    
-    def _publish_command(self, command):
-        """Helper para publicar comandos."""
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _pub(self, cmd: str):
         msg = String()
-        msg.data = command
-        self.pub_motor_commands.publish(msg)
-    
-    def _keyboard_listener(self):
-        """Thread que escucha el teclado y publica comandos de motor."""
+        msg.data = cmd
+        self.pub.publish(msg)
+
+    def _log_indicator(self):
         self.get_logger().info("")
-        self.get_logger().info("═" * 60)
-        self.get_logger().info("  CONTROL DE MOTORES CON VELOCIDAD VARIABLE")
-        self.get_logger().info("═" * 60)
-        self.get_logger().info("  Dirección:")
-        self.get_logger().info("    A → Mover izquierda")
-        self.get_logger().info("    D → Mover derecha")
-        self.get_logger().info("    S → Detener motor")
+        self.get_logger().info("  ┌──────────────────────────────────────┐")
+        self.get_logger().info(f"  │  Motor activo: {MOTOR_LABELS[self.active_motor]:<22}│")
+        self.get_logger().info(f"  │  {_indicator(self.active_motor):<36}│")
+        self.get_logger().info("  └──────────────────────────────────────┘")
         self.get_logger().info("")
-        self.get_logger().info("  Velocidad (incrementos de 10%):")
-        self.get_logger().info("    W → Disminuir velocidad (-10%)")
-        self.get_logger().info("    E → Aumentar velocidad (+10%)")
-        self.get_logger().info("    ⚡ Cambios se aplican inmediatamente si el motor está girando")
+
+    def _log_header(self):
         self.get_logger().info("")
-        self.get_logger().info("  Atajos:")
-        self.get_logger().info("    1 → 🐌 Lenta (40%)")
-        self.get_logger().info("    2 → 🚶 Media (70%)")
-        self.get_logger().info("    3 → 🚀 Rápida (100%)")
+        self.get_logger().info("═" * 55)
+        self.get_logger().info("  CONTROL DUAL DE MOTORES")
+        self.get_logger().info("═" * 55)
+        self.get_logger().info("  M / Tab  → Cambiar motor activo (M1 ↔ M2)")
+        self.get_logger().info("  A / D    → Izquierda / Derecha")
+        self.get_logger().info("  S        → Detener")
+        self.get_logger().info("  W / E    → Velocidad  -10% / +10%")
+        self.get_logger().info("  1/2/3    → 40% / 70% / 100%")
+        self.get_logger().info("  I        → Estado    Q → Salir")
+        self.get_logger().info("═" * 55)
+        self.get_logger().info(
+            f"  Motor activo : {MOTOR_LABELS[self.active_motor]}")
+        self.get_logger().info(f"  Velocidad    : {self.speed_pct}%")
+        self.get_logger().info(f"  Estado       : {self.motor_state}")
+        self.get_logger().info("═" * 55)
         self.get_logger().info("")
-        self.get_logger().info("    Q → Salir")
-        self.get_logger().info("═" * 60)
-        self.get_logger().info(f"  Velocidad actual: {self.current_speed_percent}%")
-        self.get_logger().info(f"  Estado motor: {self.motor_state}")
-        self.get_logger().info("═" * 60)
-        self.get_logger().info("")
-        
-        while rclpy.ok() and self._keyboard_active:
+
+    def _switch_motor(self):
+        self.active_motor = 2 if self.active_motor == 1 else 1
+        self._pub(f"SELECT_MOTOR_{self.active_motor}")
+        self._log_indicator()
+
+    def _reapply(self):
+        """Reaplicar dirección al motor activo tras cambiar velocidad."""
+        if self.motor_state == "LEFT":
+            self._pub("LEFT")
+        elif self.motor_state == "RIGHT":
+            self._pub("RIGHT")
+
+    # ── loop ────────────────────────────────────────────────
+
+    def _loop(self):
+        self._log_header()
+
+        while rclpy.ok() and self._running:
             try:
                 key = self._getch().lower()
-                
-                # Comandos de dirección
-                if key == 'a':
-                    self.motor_state = "LEFT"
-                    self._publish_command("LEFT")
-                    self.get_logger().info(f" IZQUIERDA [{self.current_speed_percent}%]")
-                    
-                elif key == 'd':
-                    self.motor_state = "RIGHT"
-                    self._publish_command("RIGHT")
-                    self.get_logger().info(f" DERECHA [{self.current_speed_percent}%]")
-                
-                elif key == 's':
-                    self.motor_state = "STOPPED"
-                    self._publish_command("STOP")
-                    self.get_logger().info("⏸  DETENIDO")
-                
-                # Control incremental de velocidad
-                elif key == 'w':
-                    # Disminuir 10%
-                    self.current_speed_percent = max(10, self.current_speed_percent - 10)
-                    self._publish_command(f"SPEED_SET_{self.current_speed_percent}")
-                    self.get_logger().info(f"🔽 Velocidad: {self.current_speed_percent}%")
-                    
-                    # Si el motor está girando, reaplicar dirección con nueva velocidad
-                    if self.motor_state == "LEFT":
-                        self._publish_command("LEFT")
-                        self.get_logger().info(f"   ↻ Aplicando a motor IZQUIERDA")
-                    elif self.motor_state == "RIGHT":
-                        self._publish_command("RIGHT")
-                        self.get_logger().info(f"   ↻ Aplicando a motor DERECHA")
-                
-                elif key == 'e':
-                    # Aumentar 10%
-                    self.current_speed_percent = min(100, self.current_speed_percent + 10)
-                    self._publish_command(f"SPEED_SET_{self.current_speed_percent}")
-                    self.get_logger().info(f"🔼 Velocidad: {self.current_speed_percent}%")
-                    
-                    # Si el motor está girando, reaplicar dirección con nueva velocidad
-                    if self.motor_state == "LEFT":
-                        self._publish_command("LEFT")
-                        self.get_logger().info(f"   ↻ Aplicando a motor IZQUIERDA")
-                    elif self.motor_state == "RIGHT":
-                        self._publish_command("RIGHT")
-                        self.get_logger().info(f"   ↻ Aplicando a motor DERECHA")
-                
-                # Atajos de velocidad
-                elif key == '1':
-                    self.current_speed_percent = 40
-                    self._publish_command("SPEED_SET_40")
-                    self.get_logger().info(f"🎚️  Velocidad: {self.current_speed_percent}% (Lenta)")
-                    
-                    # Reaplicar si está en movimiento
-                    if self.motor_state == "LEFT":
-                        self._publish_command("LEFT")
-                    elif self.motor_state == "RIGHT":
-                        self._publish_command("RIGHT")
-                
-                elif key == '2':
-                    self.current_speed_percent = 70
-                    self._publish_command("SPEED_SET_70")
-                    self.get_logger().info(f"🎚️  Velocidad: {self.current_speed_percent}% (Media)")
-                    
-                    # Reaplicar si está en movimiento
-                    if self.motor_state == "LEFT":
-                        self._publish_command("LEFT")
-                    elif self.motor_state == "RIGHT":
-                        self._publish_command("RIGHT")
-                
-                elif key == '3':
-                    self.current_speed_percent = 100
-                    self._publish_command("SPEED_SET_100")
-                    self.get_logger().info(f"🎚️  Velocidad: {self.current_speed_percent}% (Rápida)")
-                    
-                    # Reaplicar si está en movimiento
-                    if self.motor_state == "LEFT":
-                        self._publish_command("LEFT")
-                    elif self.motor_state == "RIGHT":
-                        self._publish_command("RIGHT")
-                    
-                elif key == 'q':
-                    self.get_logger().info("Deteniendo listener de teclado...")
-                    self._keyboard_active = False
-                    break
-                    
             except Exception as e:
-                self.get_logger().error(f"Error en keyboard listener: {e}")
+                self.get_logger().error(f"Error teclado: {e}")
+                break
+
+            # Selección de motor
+            if key in ('m', '\t'):
+                self._switch_motor()
+
+            # Dirección
+            elif key == 'a':
+                self.motor_state = "LEFT"
+                self._pub("LEFT")
+                self.get_logger().info(
+                    f"  [M{self.active_motor}] <-- IZQUIERDA  [{self.speed_pct}%]")
+
+            elif key == 'd':
+                self.motor_state = "RIGHT"
+                self._pub("RIGHT")
+                self.get_logger().info(
+                    f"  [M{self.active_motor}] --> DERECHA    [{self.speed_pct}%]")
+
+            elif key == 's':
+                self.motor_state = "STOPPED"
+                self._pub("STOP")
+                self.get_logger().info(f"  [M{self.active_motor}] || DETENIDO")
+
+            # Velocidad incremental
+            elif key == 'w':
+                self.speed_pct = max(10, self.speed_pct - 10)
+                self._pub(f"SPEED_SET_{self.speed_pct}")
+                self.get_logger().info(f"  Velocidad: {self.speed_pct}%  (-10%)")
+                self._reapply()
+
+            elif key == 'e':
+                self.speed_pct = min(100, self.speed_pct + 10)
+                self._pub(f"SPEED_SET_{self.speed_pct}")
+                self.get_logger().info(f"  Velocidad: {self.speed_pct}%  (+10%)")
+                self._reapply()
+
+            # Atajos de velocidad
+            elif key == '1':
+                self.speed_pct = 40
+                self._pub("SPEED_SET_40")
+                self.get_logger().info("  Velocidad: 40%  (Lenta)")
+                self._reapply()
+
+            elif key == '2':
+                self.speed_pct = 70
+                self._pub("SPEED_SET_70")
+                self.get_logger().info("  Velocidad: 70%  (Media)")
+                self._reapply()
+
+            elif key == '3':
+                self.speed_pct = 100
+                self._pub("SPEED_SET_100")
+                self.get_logger().info("  Velocidad: 100% (Rápida)")
+                self._reapply()
+
+            # Info / salir
+            elif key == 'i':
+                self._log_header()
+
+            elif key == 'q':
+                self.get_logger().info("Saliendo...")
+                self._running = False
                 break
 
 
 def main(args=None):
-    """Función principal."""
-    print("=" * 60)
-    print("   NODO ROS 2 - CONTROL DE MOTOR CON VELOCIDAD")
-    print("=" * 60)
-    
+    print("=" * 55)
+    print("   NODO ROS 2 — CONTROL DUAL DE MOTORES")
+    print("   M1: GPIO 25 / 26 / 14")
+    print("   M2: GPIO 27 / 33 / 32")
+    print("=" * 55)
+
     if not KEYBOARD_AVAILABLE:
-        print("ERROR: Módulo termios no disponible")
-        print("Este nodo requiere un sistema Unix/Linux")
+        print("ERROR: termios no disponible (requiere Linux)")
         return
-    
+
     rclpy.init(args=args)
-    
     try:
         node = MotorControlNode()
         rclpy.spin(node)
