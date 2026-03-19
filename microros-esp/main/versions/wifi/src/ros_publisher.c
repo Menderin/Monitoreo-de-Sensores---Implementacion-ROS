@@ -57,7 +57,7 @@ static std_msgs__msg__Float32MultiArray sensor_data_msg;
 // Suscriptor para comandos de motor
 static rcl_subscription_t motor_cmd_subscriber;
 static std_msgs__msg__String motor_cmd_msg;
-static char motor_cmd_buffer[16];  // Buffer estático para el string
+static char motor_cmd_buffer[32];  // Buffer estático (32 bytes para SELECT_MOTOR_2)
 
 // Executor para manejar callbacks
 static rclc_executor_t executor;
@@ -148,15 +148,16 @@ static void motor_cmd_callback(const void *msgin)
         motor_set_speed(duty);
         ESP_LOGI(TAG, "🎚️  Velocidad configurada: %d%% (duty=%d/255)", percent, duty);
     }
-    // Comandos de velocidad legacy (compatibilidad)
-    else if (strcmp(msg->data.data, "SPEED_SLOW") == 0) {
-        motor_set_speed(MOTOR_SPEED_SLOW);
-    }
-    else if (strcmp(msg->data.data, "SPEED_MEDIUM") == 0) {
-        motor_set_speed(MOTOR_SPEED_MEDIUM);
-    }
-    else if (strcmp(msg->data.data, "SPEED_FAST") == 0) {
-        motor_set_speed(MOTOR_SPEED_FAST);
+    // Selección de motor activo: SELECT_MOTOR_1 o SELECT_MOTOR_2
+    else if (strncmp(msg->data.data, "SELECT_MOTOR_", 13) == 0) {
+        int num = atoi(msg->data.data + 13);
+        if (num == 1) {
+            motor_select(MOTOR_1);
+        } else if (num == 2) {
+            motor_select(MOTOR_2);
+        } else {
+            ESP_LOGW(TAG, "Motor inválido: %d", num);
+        }
     }
     else {
         ESP_LOGW(TAG, "Comando desconocido: '%s'", msg->data.data);
