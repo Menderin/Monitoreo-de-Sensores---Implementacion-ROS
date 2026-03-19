@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# install.sh — Monitor de Microalgas UCN
+# install.sh — IoT Gateway Monitoring System
 # Instalación nativa en Ubuntu 24.04 (ROS 2 Jazzy + micro-ROS + Python deps)
 #
 # Uso:
@@ -9,7 +9,7 @@
 # Variables de entorno opcionales:
 #   REPO_URL    URL del repositorio git (por defecto: GitHub oficial)
 #   REPO_BRANCH Rama a clonar (por defecto: main)
-#   INSTALL_DIR Directorio de instalación (por defecto: ~/Microalgas-Monitoring)
+#   INSTALL_DIR Directorio de instalación (por defecto: ~/IoT-Gateway)
 # ==============================================================================
 
 set -euo pipefail
@@ -50,7 +50,7 @@ fi
 # ─── Variables configurables ──────────────────────────────────────────────────
 REPO_URL="${REPO_URL:-https://github.com/Menderin/Monitoreo-de-Sensores---Implementacion-ROS}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-$REAL_HOME/Microalgas-Monitoring}"
+INSTALL_DIR="${INSTALL_DIR:-$REAL_HOME/IoT-Gateway}"
 ROS_DISTRO="jazzy"
 MICROROS_WS="$REAL_HOME/microros_ws"
 ESP_IDF_VERSION="${ESP_IDF_VERSION:-v5.4.1}"

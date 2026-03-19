@@ -762,13 +762,5 @@ Antes de reportar un problema, verifica:
 - **Issues:** [GitHub Issues](https://github.com/Menderin/sensores/issues)
 - **Documentación:** [INICIO_RAPIDO.md](INICIO_RAPIDO.md) | [scripts/README.md](scripts/README.md)
 
----
-
-## 📄 Licencia
-
-Este proyecto es de código abierto. Ver [LICENSE](LICENSE) para más detalles.
-
----
-
 **Última actualización:** 15 de enero de 2026  
 **Versión:** 2.0 (CWT-BL dual pH+Temp - Calibrado)

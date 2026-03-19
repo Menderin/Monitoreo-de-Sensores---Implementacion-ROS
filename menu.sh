@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# menu.sh — Monitor de Microalgas UCN  v3.0
-# Menú principal del sistema — Raspberry Pi 400 / Gateway BioFloc
+# menu.sh — IoT Gateway Monitoring System  v3.0
+# Menú principal del sistema — IoT Sensor Gateway
 #
 # Estructura:
 #   0) Instalación de Dependencias   (ROS 2, ESP-IDF, micro-ROS)
@@ -94,8 +94,8 @@ show_header() {
     clear
     echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════╗${RESET}"
     echo -e "${BOLD}${BLUE}║                                              ║${RESET}"
-    echo -e "${BOLD}${BLUE}║   ${CYAN}Monitor de Microalgas UCN  v3.0${BLUE}          ║${RESET}"
-    echo -e "${BOLD}${BLUE}║   ${YELLOW}Raspberry Pi 400 — Gateway BioFloc${BLUE}       ║${RESET}"
+    echo -e "${BOLD}${BLUE}║   ${CYAN}IoT Gateway Monitoring System  v3.0${BLUE}      ║${RESET}"
+    echo -e "${BOLD}${BLUE}║   ${YELLOW}IoT Sensor Gateway${BLUE}                       ║${RESET}"
     echo -e "${BOLD}${BLUE}║                                              ║${RESET}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════╝${RESET}"
     echo ""
@@ -555,7 +555,7 @@ deploy_services() {
         info "Alias 'status' ya existe en ~/.bashrc — sin cambios."
     else
         echo "" >> "$HOME/.bashrc"
-        echo "# Gateway BioFloc — acceso rápido al panel de estado" >> "$HOME/.bashrc"
+        echo "# IoT Gateway — acceso rápido al panel de estado" >> "$HOME/.bashrc"
         echo "$alias_line" >> "$HOME/.bashrc"
         success "Alias 'status' añadido a ~/.bashrc"
     fi

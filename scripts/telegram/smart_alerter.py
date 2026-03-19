@@ -112,7 +112,7 @@ def check_alerts():
                 estado_alertas[clave_memoria] = "normal"
 
 if __name__ == "__main__":
-    enviar_telegram("🛡️ *Sistema de Alertas Iniciado* | Gateway BioFloc.")
+    enviar_telegram("🛡️ *Sistema de Alertas Iniciado* | IoT Sensor Gateway.")
     print("Iniciando monitoreo de alertas... (Ctrl+C para detener)")
     while True:
         try:

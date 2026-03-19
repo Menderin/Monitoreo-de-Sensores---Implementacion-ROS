@@ -1,8 +1,8 @@
-# 🌊 Sistema de Monitoreo Ambiental con ROS 2 + ESP32
+# 📡 IoT Gateway Monitoring System — ROS 2 + ESP32
 
 <div align="center">
 
-**Última actualización:** 25 de febrero de 2026
+**Última actualización:** 19 de marzo de 2026
 
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS_2-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
 [![ESP-IDF 5.4.1](https://img.shields.io/badge/ESP--IDF-5.4.1-green.svg)](https://docs.espressif.com/projects/esp-idf/)
@@ -11,7 +11,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12-yellow.svg)](https://www.python.org/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420.svg)](https://ubuntu.com/)
 
-**Sistema IoT de monitoreo ambiental: ESP32 + ROS 2 + micro-ROS (WiFi/UDP) + MongoDB**
+**Arquitectura basada en ROS 2, micro-ROS y MongoDB para la recolección de datos de sensores IoT mediante microcontroladores ESP32**
 
 </div>
 
@@ -19,7 +19,7 @@
 
 ## 📖 Descripción
 
-Sistema completo de monitoreo ambiental con **sensor dual CWT-BL** (pH y temperatura) usando **ESP32** y **micro-ROS** sobre **WiFi/UDP**. Los datos se publican como nodos ROS 2, se almacenan en **MongoDB Atlas** y se visualizan en un **dashboard Streamlit**. Incluye control de motor DC via ROS 2.
+Sistema completo de recolección de datos de sensores IoT utilizando **ESP32** y **micro-ROS** sobre **WiFi/UDP**. Los datos se publican como nodos ROS 2, se almacenan en **MongoDB Atlas** y se visualizan en un **dashboard Streamlit**. Soporta múltiples sensores analógicos (pH, temperatura, etc.) y control de actuadores vía ROS 2.
 
 ### ✨ Características
 
@@ -452,9 +452,12 @@ newgrp dialout
 
 ---
 
-## 👤 Autor
+## 👥 Autores
 
-**Menderin** · [@Menderin](https://github.com/Menderin)
+**Organización:** Laboratorio de Máquinas Inteligentes (EIC - UCN Coquimbo)
+
+- **Victor Jopia** · [@Menderin](https://github.com/Menderin)
+- **Martín Castillo** · [@Marton1123](https://github.com/Marton1123)
 
 ---
 
