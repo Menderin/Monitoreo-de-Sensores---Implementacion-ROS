@@ -29,6 +29,7 @@
 **/.password
 config.ini
 secrets.yaml
+.claves
 
 # ============================================
 # 🐍 PYTHON (Análisis de Datos / Backend)
@@ -105,6 +106,10 @@ data/processed/**
 build/
 sdkconfig
 sdkconfig.old
+
+# Archivos de respaldo locales
+*_backup.c
+*_backup.h
 
 # ============================================
 # 🌐 NODE.JS / DASHBOARD (React/Vue/Angular)
