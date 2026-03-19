@@ -12,11 +12,15 @@ Uso:
     python3 ros_sensor_node.py
 """
 
+import os
 import sys
 from pathlib import Path
 
 # Agregar el directorio padre al path para importar database
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ── Aislamiento DDS: solo loopback (evita bucles en interfaces múltiples) ────
+os.environ.setdefault('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST')
 
 import rclpy
 from rclpy.node import Node

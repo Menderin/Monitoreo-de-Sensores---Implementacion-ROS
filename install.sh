@@ -94,7 +94,21 @@ if [[ -f /opt/ros/jazzy/setup.bash ]]; then
 else
     info "Configurando repositorio de ROS 2..."
 
-    sudo apt-get $APT_OPTS update -qq
+    if ! sudo apt-get $APT_OPTS update -qq 2>&1; then
+        echo ""
+        error_msg="apt update falló. Posibles causas:"
+        error_msg+="\n  1. Sin conexión a Internet."
+        error_msg+="\n  2. Un proxy/router está interceptando el tráfico HTTPS (MITM)."
+        error_msg+="\n  3. Los certificados del sistema están desactualizados."
+        error_msg+="\n"
+        error_msg+="\n  Si estás en una red universitaria/corporativa con inspección de tráfico,"
+        error_msg+="\n  puedes forzar la instalación bajo tu responsabilidad con:"
+        error_msg+="\n"
+        error_msg+="\n    INSECURE_APT=1 sudo -E ./install.sh"
+        error_msg+="\n"
+        error_msg+="\n  ⚠️  Esto desactiva la verificación TLS de APT (NO recomendado)."
+        error "$error_msg"
+    fi
     sudo apt-get $APT_OPTS install -y --no-install-recommends \
         software-properties-common curl gnupg lsb-release
 
@@ -356,13 +370,15 @@ fi
 # Resumen final
 # ==============================================================================
 # ==============================================================================
-# 8/8  Inyectar sources en ~/.bashrc  (anti-duplicado)
+# 8/8  Configurar entorno, permisos y accesos directos
 # ==============================================================================
-header "8/8  Configurando ~/.bashrc"
+header "8/8  Configurando entorno del sistema"
 
+# ── 8a. Inyectar sources en ~/.bashrc (anti-duplicado) ─────────────────────────
 _bashrc="$REAL_HOME/.bashrc"
 _ros_source="source /opt/ros/jazzy/setup.bash"
 _uros_source="source $MICROROS_WS/install/setup.bash"
+_dds_export="export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST"
 
 info "Verificando entradas en $_bashrc ..."
 
@@ -383,11 +399,58 @@ else
     info "  Ya presente: $_uros_source"
 fi
 
+# Aislamiento DDS: fuerza ROS 2 a usar solo loopback (sin bucles multi-interfaz)
+if ! grep -qF "ROS_AUTOMATIC_DISCOVERY_RANGE" "$_bashrc" 2>/dev/null; then
+    echo "# ── Aislamiento DDS (solo loopback) ────────────" >> "$_bashrc"
+    echo "$_dds_export"                                       >> "$_bashrc"
+    success "  Añadido: $_dds_export"
+else
+    info "  Ya presente: ROS_AUTOMATIC_DISCOVERY_RANGE"
+fi
+
 # Asegurar que el .bashrc pertenece al usuario real (no a root)
 chown "$REAL_USER:$REAL_USER" "$_bashrc" 2>/dev/null || true
 
 echo ""
 success "~/.bashrc actualizado. Abre una terminal nueva o ejecuta: source ~/.bashrc"
+
+# ── 8b. Reemplazar {{USER_HOME}} en scripts de arranque ───────────────────────
+info "Inyectando ruta HOME ($REAL_HOME) en scripts de arranque..."
+for _script in "$INSTALL_DIR/scripts/start_agent.sh" \
+               "$INSTALL_DIR/scripts/start_bridge.sh"; do
+    if [[ -f "$_script" ]] && grep -q '{{USER_HOME}}' "$_script"; then
+        sed -i "s|{{USER_HOME}}|$REAL_HOME|g" "$_script"
+        success "  Reemplazado {{USER_HOME}} → $REAL_HOME en $(basename "$_script")"
+    fi
+done
+
+# También reemplazar en templates de servicios systemd
+for _tpl in "$INSTALL_DIR/services/"*.tpl; do
+    if [[ -f "$_tpl" ]] && grep -q '{{USER_HOME}}' "$_tpl"; then
+        sed -i "s|{{USER_HOME}}|$REAL_HOME|g" "$_tpl"
+        success "  Reemplazado {{USER_HOME}} → $REAL_HOME en $(basename "$_tpl")"
+    fi
+done
+
+# ── 8c. Permisos de ejecución en scripts ──────────────────────────────────────
+info "Asignando permisos de ejecución a scripts..."
+chmod +x "$INSTALL_DIR/scripts/"*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR/menu.sh" 2>/dev/null || true
+success "  Permisos +x asignados."
+
+# ── 8d. Enlace simbólico para el comando 'status' ─────────────────────────────
+info "Creando enlace simbólico: status → $INSTALL_DIR/scripts/status.sh"
+sudo ln -sf "$INSTALL_DIR/scripts/status.sh" /usr/local/bin/status
+success "  Ahora puedes ejecutar 'status' desde cualquier directorio."
+
+# ── 8e. Instalar iptables-persistent (dependencia del firewall) ───────────────
+if ! dpkg -l iptables-persistent &>/dev/null 2>&1; then
+    info "Instalando iptables-persistent para persistencia del firewall..."
+    sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y iptables-persistent -qq
+    success "  iptables-persistent instalado."
+else
+    info "  iptables-persistent ya instalado."
+fi
 
 echo ""
 success "══════════════════════════════════════════════"

@@ -360,12 +360,36 @@ idf.py build
 4. Verificar en monitor serial que el ESP32 obtuvo IP
 5. **Importante**: Recompilar después de cambiar `.env` (el script `microros.sh` auto-genera `sdkconfig.defaults`)
 
-### ❌ No aparecen tópicos en ROS 2
+### ❌ No aparecen tópicos en ROS 2 (DDS Discovery Loop)
+
+Si el Agent o el Bridge se bloquean con errores de DDS Discovery al tener múltiples interfaces de red (Ethernet + WiFi):
 
 ```bash
-export ROS_DOMAIN_ID=0
-export ROS_LOCALHOST_ONLY=0
+# Forzar DDS a usar solo loopback (ya configurado por install.sh)
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 ros2 topic list
+```
+
+> **Nota:** `install.sh` ya inyecta esta variable en `~/.bashrc` y en los scripts de arranque. Si abres una terminal nueva, debería funcionar automáticamente.
+
+### ❌ `apt update` falla por certificados / MITM
+
+En redes universitarias o corporativas con inspección de tráfico, `apt update` puede fallar por certificados no válidos.
+
+**El instalador se detendrá con un mensaje claro.** Si necesitas forzar la instalación:
+
+```bash
+INSECURE_APT=1 sudo -E ./install.sh
+```
+
+> ⚠️ **Esto desactiva la verificación TLS de APT.** Solo úsalo si estás seguro de que la red es confiable a pesar de la intercepción.
+
+### ❌ `status` no funciona como comando
+
+`install.sh` crea automáticamente un enlace simbólico en `/usr/local/bin/status`. Si no funciona:
+
+```bash
+sudo ln -sf /ruta/al/proyecto/scripts/status.sh /usr/local/bin/status
 ```
 
 ### ❌ Permiso denegado en `/dev/ttyUSB0`
@@ -388,8 +412,13 @@ newgrp dialout
 - ✅ **Paquetes micro-ROS en venv IDF**: Instala automáticamente `catkin_pkg`, `empy`, `lark`, `colcon-common-extensions`
 - ✅ **Dependencias ROS 2 completas**: Incluye `std-msgs`, `ros2topic`, `ros2cli` para debugging
 - ✅ **Python científico**: Instala `numpy` (para calibración) y `pyyaml` (herramientas ROS)
-- ✅ **Soporte Raspberry Pi**: Compilación secuencial optimizada para ARM con manejo de errores robusto
+- ✅ **Compilación secuencial para Raspberry Pi**: Modo `--executor sequential` para ARM
 - ✅ **Resolución automática dependencias**: Ejecuta `rosdep` antes de compilar micro-ROS
+- ✅ **Aislamiento DDS**: Inyecta `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` en `.bashrc` y scripts
+- ✅ **Rutas portables**: Usa placeholder `{{USER_HOME}}` reemplazado por `sed` en la instalación
+- ✅ **Persistencia firewall**: Instala `iptables-persistent` y ejecuta `netfilter-persistent save`
+- ✅ **Comando `status` global**: Crea enlace simbólico en `/usr/local/bin/status`
+- ✅ **Detección MITM**: `apt update` falla con diagnóstico claro en lugar de continuar sin TLS
 
 ### Build ESP32 (`microros.sh` + `CMakeLists.txt`)
 - ✅ **Auto-generación de credenciales**: `CMakeLists.txt` lee `.env` y genera `wifi_config.h` automáticamente

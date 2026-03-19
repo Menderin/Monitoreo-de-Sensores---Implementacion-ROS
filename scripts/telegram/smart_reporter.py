@@ -22,7 +22,7 @@ MONGO_COL_SENSORS = os.getenv("MONGO_COLLECTION")
 MONGO_COL_DEVICES = os.getenv("MONGO_COLLECTION_DISPOSITIVOS")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-ESTADO_FILE = os.path.expanduser('~/scripts/telegram/reporte_estado.json')
+ESTADO_FILE = str(Path(__file__).resolve().parent / 'reporte_estado.json')
 
 # ==========================================
 # 2. FUNCIONES DE MEMORIA (Antispam)

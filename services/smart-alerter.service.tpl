@@ -7,10 +7,11 @@ Requires=smart-bridge.service
 Type=simple
 User={{USER}}
 WorkingDirectory={{REPO_DIR}}/database
+Environment=HOME={{USER_HOME}}
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 -u {{SCRIPTS_DIR}}/telegram/smart_alerter.py
 Restart=on-failure
 RestartSec=10
-Environment=PYTHONUNBUFFERED=1
 TimeoutStartSec=30
 
 [Install]
