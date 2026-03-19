@@ -55,7 +55,10 @@ Sistema completo de recolección de datos de sensores IoT utilizando **ESP32** y
               ┌───────────────────▼────────────────────┐
               │              PC — nativo               │
               │  micro_ros_agent UDP/8888               │
-              │         │ DDS (FastRTPS)                │
+              │  (XRCE-DDS → ROS 2 DDS interno)        │
+              │  ROS_AUTOMATIC_DISCOVERY_RANGE=         │
+              │        LOCALHOST  ← aislamiento DDS     │
+              │                                         │
               │  ros_sensor_node.py                     │
               │  ├── Parsea Float32MultiArray           │
               │  ├── Identifica ESP32 por MAC           │
@@ -67,6 +70,8 @@ Sistema completo de recolección de datos de sensores IoT utilizando **ESP32** y
               │    (visualización + autenticación)      │
               └────────────────────────────────────────┘
 ```
+
+> **Aislamiento DDS:** El Agent convierte el protocolo XRCE-DDS del ESP32 a ROS 2 DDS estándar, pero este DDS interno se fuerza a `LOCALHOST` para evitar tormentas de discovery en redes con múltiples interfaces (Ethernet + WiFi). Los servicios `smart-agent` y `smart-bridge` llevan `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` en su archivo `.service`. El `smart-alerter` no lo necesita porque solo accede a MongoDB directamente vía Python.
 
 ### Topics ROS 2
 
@@ -155,45 +160,76 @@ Punto de entrada único para gestionar todo el sistema:
 ./menu.sh
 ```
 
+| Opción | Acción | Detalle |
+|---|---|---|
+| **0** | Instalación de Dependencias | ROS 2 Jazzy, ESP-IDF, micro-ROS Agent |
+| **1** | Configuración del Sistema | MongoDB `.env`, WiFi `.env`, Telegram, Hotspot WiFi |
+| **2** | Despliegue de Sensores | Compilar y flashear firmware ESP32 |
+| **3** | Activación de Servicios | Systemd (agent+bridge+alerter), Cron, Firewall |
+| **4** | Diagnóstico y Operación | Panel de estado, logs journalctl, monitor tópicos ROS |
+| **q** | Salir | — |
+
+### Submenú `1) Configuración del Sistema`
+
 | Opción | Acción |
 |---|---|
-| **1** | Modificar credenciales (MongoDB `database/.env` y WiFi `microros-esp/main/versions/wifi/.env`) |
-| **2** | Iniciar agentes (micro-ROS Agent UDP / nodo sensores → MongoDB / motores) |
-| **3** | ESP32 (compilar, flashear, monitor, Agent, calibración…) |
-| **0** | Salir |
+| **a** | Base de datos MongoDB (`database/.env`) |
+| **b** | WiFi / micro-ROS (`microros-esp/main/versions/wifi/.env`) |
+| **c** | Telegram (Bot Token / Chat ID) |
+| **d** | Hotspot WiFi (crea red de sensores en `wlan0` con IP `10.42.0.1`) |
 
-### Submenú `2) Iniciar agentes`
+### Submenú `3) Activación de Servicios`
 
-| Sub-opción | Acción | Cómo usar |
-|---|---|---|
-| **a** | Iniciar micro-ROS Agent UDP | Abrir en una terminal, Ctrl+C para detener |
-| **b** | Enviar datos a MongoDB | Abrir en otra terminal (requiere agent activo) |
-| **c** | Control de motores | Abrir en otra terminal (requiere agent activo) |
+| Opción | Acción |
+|---|---|
+| **a** | Deploy Systemd one-click (`smart-agent` + `smart-bridge` + `smart-alerter`) |
+| **b** | Configurar reportes automáticos Telegram (crontab) |
+| **c** | Aplicar reglas de Firewall (auto-detección de interfaces) |
+
+### Submenú `4) Diagnóstico y Operación`
+
+| Opción | Acción |
+|---|---|
+| **a** | Panel de estado del gateway (servicios, red, hardware) |
+| **b** | Logs en tiempo real (`journalctl -f` para agent/bridge/alerter) |
+| **c** | Monitor de tópicos ROS 2 (`ros2 topic echo` / `hz`) |
 
 ---
 
 ## 🚀 Uso del sistema
 
-### Flujo típico de operación
+### Flujo típico de operación — modo Systemd (producción)
 
-1. **Terminal 1** — arrancar el Agent:
+1. **Deploy de servicios** (solo la primera vez):
    ```
-   ./menu.sh → 2 → a
+   ./menu.sh → 3 → a
    ```
+   Instala y activa `smart-agent`, `smart-bridge` y `smart-alerter` como daemons que arrancan automáticamente.
 
-2. **Terminal 2** — iniciar nodo de sensores:
+2. **Verificar estado:**
+   ```bash
+   status          # comando global instalado por install.sh
    ```
-   ./menu.sh → 2 → b
-   ```
+   O desde el menú: `./menu.sh → 4 → a`
 
-3. Verificar datos en tiempo real:
+3. **Ver datos en tiempo real:**
+   ```bash
+   ./menu.sh → 4 → c    # Monitor de tópicos ROS
+   ```
+   O manualmente:
    ```bash
    source /opt/ros/jazzy/setup.bash
+   export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
    ros2 topic list
    ros2 topic echo /sensor_data
    ```
 
-4. Enviar comandos al motor:
+4. **Ver logs de un servicio:**
+   ```
+   ./menu.sh → 4 → b
+   ```
+
+5. **Enviar comandos al motor:**
    ```bash
    ros2 topic pub /motor_commands std_msgs/msg/String "data: 'LEFT'" --once
    ros2 topic pub /motor_commands std_msgs/msg/String "data: 'STOP'" --once
@@ -202,7 +238,7 @@ Punto de entrada único para gestionar todo el sistema:
 
 ### Compilar y flashear el ESP32
 
-Desde el menú, opción **3**, o directamente:
+Desde el menú, opción **2**, o directamente:
 
 ```bash
 cd microros-esp/scripts
@@ -226,18 +262,18 @@ python3 calibracion_ph.py
 4. Repetir para pH 6.86 y 9.18
 5. Presionar **Enter** → calcula regresión lineal → genera bloque para `config.h`
 
-**Calibración actual (2026-02-23):**
+**Calibración actual (2026-03-13):**
 
 | Buffer | Voltaje medido | Notas |
 |---|---|---|
-| pH 4.04 | 884 mV | Buffer estándar |
-| pH 6.90 | 1703 mV | Buffer neutro |
-| pH 9.23 | 2349 mV | Buffer alcalino |
+| pH 4.00 | 756 mV | Buffer estándar |
+| pH 6.86 | 1504 mV | Buffer neutro |
+| pH 9.18 | 2127 mV | Buffer alcalino |
 
 ```c
-// config.h — calibrado 2026-02-23
-#define PH_SLOPE       0.003540
-#define PH_INTERCEPT   0.898120
+// config.h — calibrado 2026-03-13
+#define PH_SLOPE       0.003780
+#define PH_INTERCEPT   1.152729
 ```
 
 ---
@@ -283,8 +319,8 @@ sensores/
 |---|---|---|
 | `ADC_PH_CHANNEL` | `ADC_CHANNEL_0` (GPIO36) | Canal ADC sensor pH |
 | `ADC_TEMP_CHANNEL` | `ADC_CHANNEL_3` (GPIO39) | Canal ADC temperatura |
-| `PH_SLOPE` | `0.003540` | Pendiente regresión pH (cal. 2026-02-23) |
-| `PH_INTERCEPT` | `0.898120` | Intercepto regresión pH (cal. 2026-02-23) |
+| `PH_SLOPE` | `0.003780` | Pendiente regresión pH (cal. 2026-03-13) |
+| `PH_INTERCEPT` | `1.152729` | Intercepto regresión pH (cal. 2026-03-13) |
 | `TEMP_OFFSET_CAL` | `-0.7` | Offset calibración temperatura |
 | `PUBLISH_INTERVAL_MS` | `4000` | Publicación cada 4 segundos |
 | `MOTOR_IN1_PIN` | `GPIO25` | PWM motor izquierda |
@@ -414,10 +450,10 @@ newgrp dialout
 - ✅ **Python científico**: Instala `numpy` (para calibración) y `pyyaml` (herramientas ROS)
 - ✅ **Compilación secuencial para Raspberry Pi**: Modo `--executor sequential` para ARM
 - ✅ **Resolución automática dependencias**: Ejecuta `rosdep` antes de compilar micro-ROS
-- ✅ **Aislamiento DDS**: Inyecta `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` en `.bashrc` y scripts
+- ✅ **Aislamiento DDS**: Inyecta `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` en `.bashrc` y en los templates de `smart-agent` y `smart-bridge` (el `smart-alerter` no lo requiere — accede a MongoDB sin usar ROS)
 - ✅ **Rutas portables**: Usa placeholder `{{USER_HOME}}` reemplazado por `sed` en la instalación
 - ✅ **Persistencia firewall**: Instala `iptables-persistent` y ejecuta `netfilter-persistent save`
-- ✅ **Comando `status` global**: Crea enlace simbólico en `/usr/local/bin/status`
+- ✅ **Comando `status` global**: Crea enlace simbólico en `/usr/local/bin/status` (además el deploy de servicios añade `alias status=...` en `~/.bashrc` como acceso rápido)
 - ✅ **Detección MITM**: `apt update` falla con diagnóstico claro en lugar de continuar sin TLS
 
 ### Build ESP32 (`microros.sh` + `CMakeLists.txt`)

@@ -1,399 +1,142 @@
-# 🛠️ Scripts y Herramientas
+# 🛠️ Scripts y Herramientas — ESP32 micro-ROS
 
-Carpeta de utilidades para desarrollo con micro-ROS + ESP32 + ROS 2.
+Carpeta de utilidades para desarrollo con micro-ROS + ESP32 + ROS 2 sobre **WiFi/UDP**.
 
-**Última actualización:** 14 de enero de 2026
+**Última actualización:** 19 de marzo de 2026
 
-## 📄 Archivos
+---
 
-### 🎛️ microros.sh (★ SCRIPT PRINCIPAL TODO-EN-UNO)
+## 📄 microros.sh — Script principal
 
-**Script unificado que reemplaza a todos los anteriores** con interfaz mejorada, manejo robusto de errores y soporte completo para desarrollo, instalación y diagnóstico.
+Interfaz interactiva para compilar, flashear, diagnosticar y operar el firmware ESP32 con micro-ROS.
 
-#### 🚀 Uso Rápido
+### Uso
 
 ```bash
-# Menú interactivo completo
+cd microros-esp/scripts
 ./microros.sh
-
-# O comandos directos
-./microros.sh <comando>
 ```
 
-#### 📋 Menú Interactivo
+### Menú interactivo (15 opciones)
 
 ```
-╔═══════════════════════════════════════════════════════╗
-║      🤖 micro-ROS ESP32 - Control Center 🚀          ║
-╚═══════════════════════════════════════════════════════╝
-
-  ESP32 - Desarrollo
-    1)  Compilar proyecto
-    2)  Flashear ESP32
-    3)  Monitor serial
-    4)  Build + Flash + Monitor (todo en uno)
-    5)  Limpiar proyecto (fullclean)
-    6)  Configuración (menuconfig)
-    7)  Borrar flash completa
+  ESP32 — Build & Flash
+    1)  Monitor serial
+    2)  Build + Flash + Monitor
+    3)  Limpiar proyecto (fullclean)
+    4)  Configuración (menuconfig)
 
   micro-ROS Agent
-    8)  Iniciar Agent (Serial/UART)
-    9)  Iniciar Agent (UDP/WiFi)
+    5)  Agent (Serial/UART)
+    6)  Agent (UDP/WiFi)         ← modo principal del proyecto
 
-  ROS 2 - Monitoreo
-    10) Ver tópicos
-    11) Escuchar /temperatura
-    12) Info del nodo ESP32
-    13) Frecuencia de publicación (hz)
+  ROS 2 — Monitoreo
+    7)  Ver tópicos
+    8)  Frecuencia de publicación (hz)
 
-  Instalación y Configuración
-    14) Instalar micro-ROS Agent
-    15) Verificar dependencias
-    16) Configurar permisos USB
+  Instalación
+    9)  Instalar micro-ROS Agent
+    10) Verificar dependencias
 
   Diagnóstico
-    17) Ver puertos seriales
-    18) Test conexión serial
-    19) Info del sistema
+    11) Ver puertos seriales
+
+  WiFi / Configuración
+    12) Editar credenciales (.env)
+    13) Mostrar IP del PC
+    14) Generar wifi_config.h
+    15) Verificar configuración WiFi
 ```
 
-#### 💻 Comandos CLI Disponibles
+> **Modo de operación normal:** El proyecto usa **UDP/WiFi** (opción 6). La opción 5 (Serial/UART) está disponible solo para debugging directo.
 
-**ESP32 - Desarrollo:**
+---
+
+## 📄 utils/calibracion_ph.py — Herramienta de calibración pH
+
+Script interactivo para calibrar el sensor pH con regresión lineal.
+
+### Uso
+
 ```bash
-./microros.sh build              # Compilar proyecto
-./microros.sh flash              # Flashear ESP32
-./microros.sh monitor            # Monitor serial
-./microros.sh all                # Build + Flash + Monitor
-./microros.sh clean              # Limpiar proyecto
-./microros.sh menuconfig         # Abrir menuconfig
-./microros.sh erase-flash        # Borrar flash completa
-```
-
-**micro-ROS Agent:**
-```bash
-./microros.sh agent-serial       # Iniciar Agent por serial
-./microros.sh agent-udp          # Iniciar Agent por UDP
-```
-
-**ROS 2:**
-```bash
-./microros.sh topics             # Listar tópicos
-./microros.sh listen             # Escuchar /temperatura
-./microros.sh node-info          # Info del nodo ESP32
-./microros.sh hz                 # Frecuencia de publicación
-```
-
-**Instalación:**
-```bash
-./microros.sh install-agent      # Instalar micro-ROS Agent
-./microros.sh check-deps         # Verificar dependencias
-./microros.sh fix-permissions    # Configurar permisos USB
-```
-
-**Diagnóstico:**
-```bash
-./microros.sh ports              # Ver puertos seriales
-./microros.sh test-serial        # Test conexión serial
-./microros.sh sysinfo            # Info del sistema
-./microros.sh help               # Ver ayuda completa
-```
-
-#### ✨ Características
-
-- ✅ **Detección automática** de puerto USB del ESP32
-- ✅ **Configuración automática** de entornos (ESP-IDF y ROS 2)
-- ✅ **Verificación de dependencias** al inicio
-- ✅ **Manejo inteligente** de procesos que bloquean puertos
-- ✅ **Instalador incluido** para micro-ROS Agent
-- ✅ **Interfaz colorizada** y mensajes claros
-- ✅ **Modo CLI** para automatización y scripts
-- ✅ **Diagnóstico completo** del sistema
-- ✅ **Sin dependencias externas** (solo bash nativo)
-
-#### 📝 Ejemplos de Uso
-
-**Desarrollo típico:**
-```bash
-# Todo en uno (recomendado para primeras pruebas)
-./microros.sh all
-
-# O paso a paso
-./microros.sh build
-./microros.sh flash
-./microros.sh monitor
-```
-
-**Operación diaria:**
-```bash
-# Terminal 1: Monitor del ESP32
-./microros.sh monitor
-
-# Terminal 2: Agent
-./microros.sh agent-serial
-
-# Terminal 3: Ver datos
-./microros.sh listen
-```
-
-**Primera vez:**
-```bash
-# Verificar sistema
-./microros.sh check-deps
-
-# Instalar Agent
-./microros.sh install-agent
-
-# Compilar y flashear
-./microros.sh all
-```
-
-**Troubleshooting:**
-```bash
-# Ver puertos
-./microros.sh ports
-
-# Arreglar permisos
-./microros.sh fix-permissions
-
-# Test conexión
-./microros.sh test-serial
-
-# Info completa
-./microros.sh sysinfo
-```
-
-
-### 🐍 pc_temperature_subscriber.py
-**Lector de temperatura desde ROS 2**
-
-**Instalación de dependencias (solo primera vez):**
-```bash
-# Instalar dependencias Python
-pip install -r requirements.txt
-
-# O con apt (recomendado)
-sudo apt install python3-yaml python3-numpy
-```
-
-**Ejecutar:**
-```bash
-# Asegúrate de sourcing ROS 2 primero
 source /opt/ros/jazzy/setup.bash
-python3 pc_temperature_subscriber.py
+cd microros-esp/scripts/utils
+python3 calibracion_ph.py
 ```
 
-**¿Qué hace?**
-- Se suscribe al tópico `/temperatura`
-- Muestra la temperatura con emojis y colores
-- Ideal para verificar que los datos llegan correctamente
+### Flujo
 
-**Ejemplo de salida:**
+1. **Selecciona el ESP32** a calibrar (menú con filtro por MAC — requiere micro-ROS Agent activo)
+2. **Sumerge el sensor** en la primera solución buffer
+3. **Presiona ESPACIO** → captura 10 muestras warmup + 30 reales → calcula mediana
+4. **Ingresa el pH real** de esa solución
+5. Repite para mínimo 2 buffers (ideal 3: pH 4, 6.86, 9.18)
+6. **Presiona Enter** → calcula regresión lineal → muestra bloque listo para `config.h`
+
+### Filtro por MAC
+
+Al iniciar, el script:
+- Consulta MongoDB para listar dispositivos registrados
+- Escanea `/sensor_data` por 5 segundos detectando MACs activas
+- Auto-registra MACs nuevas en la base de datos
+- Permite seleccionar qué ESP32 calibrar
+
+### Dependencias
+
+```bash
+pip install pymongo python-dotenv numpy
 ```
-[2026-01-09 15:45:23] 🌡️  25.50 °C
-[2026-01-09 15:45:25] 🌡️  25.62 °C
+
+Requiere `database/.env` con `MONGO_URI` configurado.
+
+---
+
+## 🔧 Workflows Comunes
+
+### Primera vez — compilar y flashear
+
+```bash
+cd microros-esp/scripts
+./microros.sh
+# → Opción 10: Verificar dependencias
+# → Opción 12: Editar credenciales WiFi (.env)
+# → Opción 2:  Build + Flash + Monitor
+```
+
+### Operación diaria — iniciar Agent UDP
+
+```bash
+# El Agent se gestiona como servicio systemd (desde menu.sh → 3 → a)
+# Para lanzarlo manualmente en modo debug:
+cd microros-esp/scripts
+./microros.sh
+# → Opción 6: Agent (UDP/WiFi)
+```
+
+### Ver datos en tiempo real
+
+```bash
+source /opt/ros/jazzy/setup.bash
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+ros2 topic echo /sensor_data
+```
+
+Formato del mensaje `Float32MultiArray`:
+```
+data: [temperatura, pH, voltage_raw_ph, mac_part1, mac_part2]
 ```
 
 ---
 
-## 🔧 Workflows Recomendados
+## 💡 Tips
 
-### Desarrollo Diario (3 Terminales)
-
-```bash
-# Terminal 1: Monitor ESP32
-cd ~/Documentos/Github/sensores/microRostest/scripts
-./microros.sh monitor
-
-# Terminal 2: micro-ROS Agent
-./microros.sh agent-serial
-
-# Terminal 3: Verificar datos
-./microros.sh listen
-# O
-python3 pc_temperature_subscriber.py
-```
-
-### Primera Configuración
-
-```bash
-# 1. Verificar sistema
-./microros.sh check-deps
-
-# 2. Instalar Agent (si no existe)
-./microros.sh install-agent
-
-# 3. Configurar permisos USB
-./microros.sh fix-permissions
-
-# 4. Compilar y flashear
-./microros.sh all
-```
-
-### Modificar Código
-
-```bash
-# 1. Editar main/sensor_temp.c
-nano ../main/sensor_temp.c
-
-# 2. Compilar y flashear
-./microros.sh build
-./microros.sh flash
-
-# 3. Ver output
-./microros.sh monitor
-```
-
-### Cambiar Configuración ESP-IDF
-
-```bash
-# 1. Abrir menuconfig
-./microros.sh menuconfig
-
-# 2. Navegar a: Component config -> micro-ROS
-# 3. Cambiar transporte (UART/UDP/TCP)
-
-# 4. Recompilar
-./microros.sh clean
-./microros.sh build
-./microros.sh flash
-```
+| Problema | Solución |
+|---|---|
+| ESP32 no flashea | `./microros.sh` → 11 (ver puertos), verificar permisos dialout |
+| Agent no encuentra ESP32 | `./microros.sh` → 13 (verificar IP), actualizar `AGENT_IP` en `.env` |
+| Credenciales WiFi cambiadas | `./microros.sh` → 12, luego → 2 (recompilar) |
+| `ros2 topic list` vacío | Verificar `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` |
 
 ---
 
-## 💡 Tips y Trucos
-
-### Permisos USB (problema común)
-
-```bash
-# Síntoma: "Permission denied" al flashear
-# Solución rápida:
-./microros.sh fix-permissions
-
-# O manualmente:
-sudo usermod -a -G dialout $USER
-# Luego cerrar sesión y volver a entrar
-```
-
-### Agent no encuentra ESP32
-
-```bash
-# 1. Verificar puerto
-./microros.sh ports
-
-# 2. Test conexión
-./microros.sh test-serial
-
-# 3. Si el ESP32 está en /dev/ttyUSB1 (no USB0):
-# Edita microros.sh línea ~30:
-ESP32_PORT="/dev/ttyUSB1"
-```
-
-### Monitor no muestra nada
-
-```bash
-# Presiona el botón de RESET en el ESP32
-# O usa:
-./microros.sh erase-flash
-./microros.sh flash
-```
-
-### Compilación falla
-
-```bash
-# Limpiar todo y recompilar
-./microros.sh clean
-./microros.sh build
-
-# Si persiste, limpiar cache:
-rm -rf ../build
-rm -rf ../components/micro_ros_espidf_component/micro_ros_src/{build,install}
-./microros.sh build
-```
-
-### Ver logs completos del Agent
-
-```bash
-# Ejecutar Agent en modo verbose
-cd ~
-source microros_ws/install/setup.bash
-ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0 --verbosity 10
-```
-
----
-
-## 📚 Referencia de Comandos
-
-### ESP32 (microros.sh)
-
-| Comando | Descripción | Tiempo |
-|---------|-------------|--------|
-| `build` | Compilar proyecto | ~30s |
-| `flash` | Subir firmware al ESP32 | ~10s |
-| `monitor` | Ver output serial (Ctrl+] para salir) | Interactivo |
-| `all` | Build + Flash + Monitor | ~40s + Monitor |
-| `clean` | Limpiar y recompilar | ~40s |
-| `menuconfig` | Configuración ESP-IDF | Interactivo |
-| `erase-flash` | Borrar flash completo | ~5s |
-
-### micro-ROS Agent
-
-| Comando | Descripción |
-|---------|-------------|
-| `agent-serial` | Agent por UART (/dev/ttyUSB0) |
-| `agent-udp` | Agent por WiFi (UDP 8888) |
-
-### ROS 2
-
-| Comando | Descripción |
-|---------|-------------|
-| `topics` | Listar todos los tópicos |
-| `listen` | Escuchar `/temperatura` |
-| `node-info` | Info del nodo `/micro_ros_esp32_node` |
-| `hz` | Frecuencia de publicación |
-
-### Diagnóstico
-
-| Comando | Descripción |
-|---------|-------------|
-| `ports` | Ver puertos seriales disponibles |
-| `test-serial` | Test conexión con ESP32 |
-| `sysinfo` | Info completa del sistema |
-| `check-deps` | Verificar dependencias |
-
----
-
-## 🆘 Troubleshooting Rápido
-
-| Problema | Comando | Solución |
-|----------|---------|----------|
-| ESP32 no flashea | `fix-permissions` | Agregar usuario a grupo dialout |
-| Monitor vacío | `monitor` + RESET físico | Presionar botón RESET del ESP32 |
-| Agent no conecta | `test-serial` | Verificar puerto y baudrate |
-| Build falla | `clean` → `build` | Limpiar cache y recompilar |
-| Puerto ocupado | `ports` | Cerrar otros monitores/agents |
-| Configuración perdida | `menuconfig` | Revisar UART transport habilitado |
-
----
-
-## 📝 Notas Importantes
-
-- **Puerto predeterminado:** `/dev/ttyUSB0` (cambiable en microros.sh)
-- **Baudrate:** `115200` (debe coincidir en ESP32 y Agent)
-- **Transporte:** UART/Serial (NO WiFi en esta configuración)
-- **ESP-IDF:** v5.5.2 en `/home/lab-ros/esp/v5.5.2/esp-idf`
-- **ROS 2:** Jazzy en `/opt/ros/jazzy`
-- **Agent:** Compilado en `~/microros_ws` (no disponible via apt)
-
----
-
-## 🚀 Recursos Adicionales
-
-- [Documentación ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v5.5.2/)
-- [micro-ROS para ESP32](https://github.com/micro-ROS/micro_ros_espidf_component)
-- [ROS 2 Jazzy Docs](https://docs.ros.org/en/jazzy/)
-- [Troubleshooting micro-ROS](https://micro.ros.org/docs/troubleshooting/)
-
----
-
-**💬 ¿Dudas?** Revisa el [README principal](../README.md) o la [Guía de Inicio Rápido](../docs/INICIO_RAPIDO.md)
+**Ver documentación principal:** [README.md](../../README.md)
