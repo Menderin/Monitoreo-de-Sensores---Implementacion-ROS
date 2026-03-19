@@ -48,10 +48,10 @@
 //#define PH_SLOPE       0.003622                              
 //#define PH_INTERCEPT   0.683614 
 
-// pH: calibrado 2026-02-23
-// Buffers: pH 4.04→884mV, pH 6.90→1703mV, pH 9.23→2349mV
-#define PH_SLOPE       0.003540                             
-#define PH_INTERCEPT   0.898120    
+// pH: calibrado 2026-03-13                                 
+// Buffers: pH 4.00→756mV, pH 6.86→1504mV, pH 9.18→2127mV    
+#define PH_SLOPE       0.003780                              
+#define PH_INTERCEPT   1.152729   
 
 
 // ========================================
@@ -113,12 +113,15 @@
 // CONFIGURACIÓN DE MOTOR DC - Driver MINI 298
 // ========================================
 
+// ---- MOTOR 1 (cableado actual) ----
 // Pines GPIO para driver MINI 298 (con PWM directo en IN1/IN2)
-#define MOTOR_IN1_PIN    GPIO_NUM_25  // PWM dirección izquierda
-#define MOTOR_IN2_PIN    GPIO_NUM_26  // PWM dirección derecha
+// ⚠️  No modificar: el cableado físico ya está listo con estos pines
+#define MOTOR_IN1_PIN        GPIO_NUM_25  // PWM dirección izquierda
+#define MOTOR_IN2_PIN        GPIO_NUM_26  // PWM dirección derecha
+#define MOTOR_EN_PIN         GPIO_NUM_14  // Enable del driver (HIGH = ON)
 
 // Configuración PWM para control de velocidad
-#define MOTOR_PWM_FREQ       1000           // 1 KHz
+#define MOTOR_PWM_FREQ       1000             // 1 KHz
 #define MOTOR_PWM_TIMER      LEDC_TIMER_0
 #define MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
 #define MOTOR_PWM_RESOLUTION LEDC_TIMER_8_BIT  // 0-255
@@ -134,6 +137,18 @@
 
 // Velocidad por defecto
 #define MOTOR_SPEED_DEFAULT  MOTOR_SPEED_FAST
+
+// ---- MOTOR 2 (pines reservados — pendiente de conexión) ----
+#define MOTOR2_IN1_PIN       GPIO_NUM_27  // PWM dirección izquierda
+#define MOTOR2_IN2_PIN       GPIO_NUM_33  // PWM dirección derecha
+#define MOTOR2_EN_PIN        GPIO_NUM_32  // Enable del driver (HIGH = ON)
+
+// Configuración PWM - Motor 2 (timer y canales independientes)
+#define MOTOR2_PWM_TIMER      LEDC_TIMER_1
+#define MOTOR2_PWM_MODE       LEDC_LOW_SPEED_MODE
+#define MOTOR2_PWM_RESOLUTION LEDC_TIMER_8_BIT
+#define MOTOR2_IN1_CHANNEL    LEDC_CHANNEL_2
+#define MOTOR2_IN2_CHANNEL    LEDC_CHANNEL_3
 
 // ========================================
 // RESILIENCIA MICRO-ROS (APP LAYER)
