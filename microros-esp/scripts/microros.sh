@@ -149,10 +149,10 @@ build_flash_monitor() {
     local env_file="$PROJECT_DIR/main/versions/wifi/.env"
     if [[ -f "$env_file" ]]; then
         local ssid pass agent_ip agent_port
-        ssid=$(grep "^WIFI_SSID=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
-        pass=$(grep "^WIFI_PASSWORD=" "$env_file" | cut -d'=' -f2-)
-        agent_ip=$(grep "^AGENT_IP=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
-        agent_port=$(grep "^AGENT_PORT=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
+        ssid=$(grep "^WIFI_SSID=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]\r"'"'"'")
+        pass=$(grep "^WIFI_PASSWORD=" "$env_file" | cut -d'=' -f2- | tr -d '\r"'"'"'")
+        agent_ip=$(grep "^AGENT_IP=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]\r"'"'"'")
+        agent_port=$(grep "^AGENT_PORT=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]\r"'"'"'")
         cat > "$PROJECT_DIR/sdkconfig.defaults" <<SDKEOF
 CONFIG_ESP_WIFI_SSID="${ssid}"
 CONFIG_ESP_WIFI_PASSWORD="${pass}"

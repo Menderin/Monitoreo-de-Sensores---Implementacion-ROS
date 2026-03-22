@@ -76,6 +76,8 @@ static void wifi_init_sta(void)
         .sta = {
             .ssid = ESP_WIFI_SSID,
             .password = ESP_WIFI_PASS,
+            /* Forzar WPA2-PSK para hacer match con el Hotspot Legacy de la RPi */
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
 
 #ifdef CONFIG_PM_ENABLE
             .listen_interval = 5,
@@ -88,7 +90,12 @@ static void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
 
-    ESP_LOGI(TAG, "wifi_init_sta finished.");
+    // Parche crítico: Forzar modo Legacy (802.11b/g) para evitar crasheo
+    // del driver Broadcom (error -52) en Raspberry Pi 400.
+    // Desactiva 802.11n (High Throughput) que el ESP32 negocia por defecto.
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G));
+
+    ESP_LOGI(TAG, "wifi_init_sta finished (Legacy 802.11b/g mode).");
 
 #ifdef CONFIG_PM_ENABLE
     ESP_LOGI(TAG, "esp_wifi_set_ps().");

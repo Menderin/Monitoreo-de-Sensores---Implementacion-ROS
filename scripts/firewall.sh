@@ -111,7 +111,8 @@ fi
 
 echo "[*] Guardando reglas permanentemente con netfilter-persistent..."
 sudo netfilter-persistent save
-echo "[*] Reglas guardadas. Sobrevivirán al próximo reinicio."
+sudo systemctl enable netfilter-persistent 2>/dev/null || true
+echo "[*] Reglas guardadas y servicio habilitado. Sobrevivirán al próximo reinicio."
 
 # --- Resultado ---
 echo "==================================================="

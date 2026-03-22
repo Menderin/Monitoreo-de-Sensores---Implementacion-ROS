@@ -286,10 +286,11 @@ edit_telegram_env() {
     read -rp "  Presiona Enter para continuar..." _
 }
 
-# ── 1d. Configurar Hotspot WiFi ───────────────────────────────────────────────
+# ── 1d. Configurar Hotspot WiFi ───────────────────────────────────────────
 configure_hotspot() {
     echo ""
     echo -e "${BOLD}  Configurar Hotspot WiFi — Red de Sensores ESP32${RESET}"
+    echo -e "  ${YELLOW}Modo Legacy: 2.4GHz · WPA2 · Canal 6 · Sin PMF${RESET}"
     echo ""
     echo -e "  Crea un punto de acceso WiFi en ${CYAN}wlan0${RESET} con IP ${CYAN}10.42.0.1${RESET}."
     echo -e "  Configura los ESP32 con ${CYAN}AGENT_IP=10.42.0.1${RESET} en el .env de WiFi (opción 1b)."
@@ -332,16 +333,17 @@ configure_hotspot() {
             read -rp "  Presiona Enter para volver..." _; return
         fi
     fi
-    # Nombre interno de la conexión NetworkManager (dinámico)
-    local ap_con_name="${ssid}-AP"
 
     # Interfaz WiFi (configurable; por defecto wlan0)
     local interface="wlan0"
 
-    echo -e "  ${BOLD}Configuración para el AP:${RESET}"
+    echo -e "  ${BOLD}Configuración para el AP (Legacy IoT):${RESET}"
     echo -e "    SSID     : ${CYAN}$ssid${RESET}"
     echo -e "    Password : ${CYAN}$pass${RESET}"
     echo -e "    Interfaz : ${CYAN}$interface${RESET}"
+    echo -e "    Banda    : ${CYAN}2.4 GHz (bg)${RESET}"
+    echo -e "    Canal    : ${CYAN}6${RESET}"
+    echo -e "    Seguridad: ${CYAN}WPA2-PSK (sin PMF/WPA3)${RESET}"
     echo -e "    IP GW    : ${CYAN}10.42.0.1/24${RESET}"
     echo ""
 
@@ -409,25 +411,54 @@ NETPLAN
     sudo nmcli device disconnect "$interface" 2>/dev/null || true
     sleep 1
 
-    info "Eliminando conexión '${ap_con_name}' anterior (si existe)..."
-    sudo nmcli con delete "${ap_con_name}" 2>/dev/null || true
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECUENCIA LEGACY — Compatible con ESP32 + Broadcom RPi 400
+    # Soluciona: error -52 del driver, rechazo WPA3/PMF, banda 5GHz
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # 1. Destruir cualquier perfil previo para evitar conflictos y amnesia de NetworkManager
+    info "Eliminando perfiles WiFi anteriores (anti-amnesia NM)..."
+    sudo nmcli connection delete "$ssid" 2>/dev/null || true
+    sudo nmcli connection delete Hotspot 2>/dev/null || true
     sleep 1
 
-    info "Creando punto de acceso '${ap_con_name}'..."
-    if sudo nmcli con add type wifi ifname "$interface" con-name "${ap_con_name}" autoconnect yes ssid "$ssid" \
-        && sudo nmcli con modify "${ap_con_name}" \
-            802-11-wireless.mode ap \
-            802-11-wireless-security.key-mgmt wpa-psk \
-            802-11-wireless-security.psk "$pass" \
-            ipv4.method shared \
-            ipv4.addresses "10.42.0.1/24" \
-        && sudo nmcli con up "${ap_con_name}"; then
-        echo ""
-        success "════════════════════════════════════════════"
-        success "  ¡Hotspot activo!  📡"
-        success "  SSID: $ssid  |  GW: 10.42.0.1"
-        success "════════════════════════════════════════════"
-        info "Asegúrate de que AGENT_IP=10.42.0.1 en el .env de WiFi (opción 1b)."
+    # 2. Crear el perfil desde cero, forzando nombre, clave, banda 2.4GHz (bg) y canal 6
+    info "Creando Hotspot Legacy: banda=bg, canal=6, WPA2-PSK..."
+    if sudo nmcli device wifi hotspot ifname "$interface" con-name "$ssid" ssid "$ssid" \
+            password "$pass" band bg channel 6; then
+
+        # 3. Aplicar configuraciones estrictas para compatibilidad IoT (ESP32)
+        info "Aplicando configuraciones estrictas de compatibilidad IoT..."
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.key-mgmt wpa-psk
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pmf 1          # Desactivar PMF (WPA3)
+        sudo nmcli connection modify "$ssid" 802-11-wireless.mac-address-randomization 1  # Apagar aleatoriedad MAC
+        sudo nmcli connection modify "$ssid" 802-11-wireless.powersave 2             # Apagar ahorro de energía
+
+        # 4. Reiniciar el perfil para aplicar todo de forma limpia
+        info "Reiniciando perfil para aplicar configuración..."
+        if sudo nmcli connection up "$ssid"; then
+            echo ""
+            success "════════════════════════════════════════════"
+            success "  ¡Hotspot Legacy activo!  📡"
+            success "  SSID: $ssid  |  GW: 10.42.0.1"
+            success "  Banda: 2.4GHz  |  Canal: 6  |  WPA2-PSK"
+            success "════════════════════════════════════════════"
+            info "Asegúrate de que AGENT_IP=10.42.0.1 en el .env de WiFi (opción 1b)."
+
+            # 5. Aplicar Firewall automáticamente tras levantar el Hotspot
+            echo ""
+            info "Aplicando Firewall (iptables) automáticamente..."
+            local fw_script="$SCRIPTS_DIR/firewall.sh"
+            if [[ -f "$fw_script" ]]; then
+                sudo bash "$fw_script"
+                success "Firewall aplicado y persistente tras Hotspot."
+            else
+                warn "scripts/firewall.sh no encontrado. Aplícalo manualmente (opción 3c)."
+            fi
+        else
+            error "Hotspot creado pero no se pudo activar el perfil."
+            warn  "Intenta manualmente: sudo nmcli connection up '$ssid'"
+        fi
     else
         error "No se pudo crear el punto de acceso."
         warn  "Verifica que '$interface' exista: ip link show $interface"
