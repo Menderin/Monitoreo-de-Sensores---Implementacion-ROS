@@ -93,9 +93,9 @@
 // CONFIGURACIÓN DE TAREAS
 // ========================================
 
-// Optimizado: Stack reducido de 16KB a 8KB (-8KB RAM total)
+// Optimizado: Stack incrementado para soportar mayor MTU UDP (2048 bytes)
 // CRÍTICO: Mínimo para micro-ROS sin crash
-#define MICRO_ROS_STACK_SIZE    8192
+#define MICRO_ROS_STACK_SIZE    16384
 #define MICRO_ROS_PRIORITY      5
 #define MICRO_ROS_CORE          1  // APP_CPU (Core 1)
 
