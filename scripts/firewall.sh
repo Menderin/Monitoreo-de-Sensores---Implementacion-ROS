@@ -75,11 +75,16 @@ sudo iptables -P FORWARD DROP   # Robots NO tienen acceso a Internet
 sudo iptables -P OUTPUT ACCEPT
 
 # --- 3. Reglas del sistema (Raspberry Pi) ---
-# Loopback: crítico para ROS 2 (DDS usa localhost)
+# --------------------------------------------------
+# REGLAS BASE DEL SISTEMA (CRITICO PARA ROS 2)
+# --------------------------------------------------
+# Permitir todo el trafico interno (loopback) para CycloneDDS
 sudo iptables -A INPUT -i lo -j ACCEPT
+sudo iptables -A OUTPUT -o lo -j ACCEPT
 
-# Stateful inspection: solo respuestas a conexiones iniciadas por la Pi
-sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# Permitir respuestas de conexiones salientes ya establecidas
+sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # SSH desde la LAN cableada (administración)
 sudo iptables -A INPUT -i "$IF_WAN" -p tcp --dport 22 -j ACCEPT
