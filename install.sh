@@ -443,13 +443,13 @@ info "Creando enlace simbólico: status → $INSTALL_DIR/scripts/status.sh"
 sudo ln -sf "$INSTALL_DIR/scripts/status.sh" /usr/local/bin/status
 success "  Ahora puedes ejecutar 'status' desde cualquier directorio."
 
-# ── 8e. Instalar iptables-persistent (dependencia del firewall) ───────────────
-if ! dpkg -l iptables-persistent &>/dev/null 2>&1; then
-    info "Instalando iptables-persistent para persistencia del firewall..."
-    sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y iptables-persistent -qq
-    success "  iptables-persistent instalado."
+# ── 8e. Instalar iptables-persistent y netfilter-persistent (dependencia del firewall) ─
+if ! dpkg -l iptables-persistent &>/dev/null 2>&1 || ! dpkg -l netfilter-persistent &>/dev/null 2>&1; then
+    info "Instalando iptables-persistent y netfilter-persistent para persistencia del firewall..."
+    sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y iptables-persistent netfilter-persistent -qq
+    success "  iptables-persistent y netfilter-persistent instalados."
 else
-    info "  iptables-persistent ya instalado."
+    info "  iptables-persistent y netfilter-persistent ya instalados."
 fi
 
 echo ""

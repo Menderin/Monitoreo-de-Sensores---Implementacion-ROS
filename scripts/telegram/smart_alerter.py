@@ -1,18 +1,37 @@
+#!/usr/bin/env python3
 import os
+import sys
 import time
 import requests
 from pathlib import Path
-from pymongo import MongoClient
 from datetime import datetime, timedelta, timezone
-from dotenv import load_dotenv
 
 # ==========================================
-# 1. CONFIGURACIÓN DE ENTORNO
+# 1. CONFIGURACIÓN DE ENTORNO (con manejo robusto de errores)
 # ==========================================
+
+# Sleep inicial: da tiempo a que la red esté completamente operativa
+# Esto evita que el script crashee al inicio cuando systemd lo arranca
+# antes de que NetworkManager tenga conectividad plena.
+STARTUP_DELAY = int(os.getenv("ALERTER_STARTUP_DELAY", "15"))
+print(f"[INFO] Esperando {STARTUP_DELAY}s para estabilización de red...")
+time.sleep(STARTUP_DELAY)
+
+try:
+    from pymongo import MongoClient
+    from dotenv import load_dotenv
+except ImportError as e:
+    print(f"[FATAL] Dependencia Python faltante: {e}")
+    print("[FATAL] Instala con: pip3 install pymongo python-dotenv --break-system-packages")
+    sys.exit(1)
+
 # Ruta dinámica al .env (scripts/telegram/ → repo_root/database/.env)
 env_path = Path(__file__).resolve().parents[2] / 'database' / '.env'
 if not env_path.exists():
-    raise FileNotFoundError(f".env no encontrado: {env_path}")
+    print(f"[FATAL] .env no encontrado: {env_path}")
+    print("[FATAL] Crea database/.env con las credenciales necesarias.")
+    sys.exit(1)
+
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -22,13 +41,45 @@ MONGO_COL_DEVICES = os.getenv("MONGO_COLLECTION_DISPOSITIVOS")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# Validar variables críticas antes de continuar
+_missing = []
+if not MONGO_URI:
+    _missing.append("MONGO_URI")
+if not MONGO_DB_NAME:
+    _missing.append("MONGO_DB")
+if not TOKEN:
+    _missing.append("TELEGRAM_BOT_TOKEN")
+if not CHAT_ID:
+    _missing.append("TELEGRAM_CHAT_ID")
+if _missing:
+    print(f"[FATAL] Variables de entorno faltantes en {env_path}: {', '.join(_missing)}")
+    sys.exit(1)
+
 # ==========================================
-# 2. CONEXIÓN A MONGODB
+# 2. CONEXIÓN A MONGODB (con reintentos)
 # ==========================================
-client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-db = client[MONGO_DB_NAME]
-col_devices = db[MONGO_COL_DEVICES]
-col_sensors = db[MONGO_COL_SENSORS]
+MAX_RETRIES = 5
+client = None
+db = None
+col_devices = None
+col_sensors = None
+
+for attempt in range(1, MAX_RETRIES + 1):
+    try:
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+        # Forzar conexión real para verificar conectividad
+        client.admin.command('ping')
+        db = client[MONGO_DB_NAME]
+        col_devices = db[MONGO_COL_DEVICES] if MONGO_COL_DEVICES else None
+        col_sensors = db[MONGO_COL_SENSORS] if MONGO_COL_SENSORS else None
+        print(f"[OK] Conectado a MongoDB (intento {attempt}/{MAX_RETRIES})")
+        break
+    except Exception as e:
+        print(f"[WARN] MongoDB no disponible (intento {attempt}/{MAX_RETRIES}): {e}")
+        if attempt == MAX_RETRIES:
+            print("[FATAL] No se pudo conectar a MongoDB tras todos los reintentos.")
+            sys.exit(1)
+        time.sleep(10)
 
 # Memoria para no spamear alertas repetidas
 estado_alertas = {}
@@ -43,6 +94,10 @@ def enviar_telegram(mensaje):
         print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
 
 def check_alerts():
+    if col_devices is None or col_sensors is None:
+        print("[WARN] Colecciones MongoDB no configuradas, saltando ciclo.")
+        return
+
     ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     hace_2_minutos = ahora_utc - timedelta(minutes=2)
 
@@ -112,11 +167,16 @@ def check_alerts():
                 estado_alertas[clave_memoria] = "normal"
 
 if __name__ == "__main__":
-    enviar_telegram("🛡️ *Sistema de Alertas Iniciado* | IoT Sensor Gateway.")
+    try:
+        enviar_telegram("🛡️ *Sistema de Alertas Iniciado* | IoT Sensor Gateway.")
+    except Exception as e:
+        print(f"[WARN] No se pudo enviar mensaje de inicio: {e}")
+
     print("Iniciando monitoreo de alertas... (Ctrl+C para detener)")
     while True:
         try:
             check_alerts()
         except Exception as e:
-            print(f"Error en el ciclo: {e}")
+            print(f"[ERROR] Error en el ciclo de alertas: {e}")
+            # No crashear, esperar y reintentar
         time.sleep(60)  # Revisión cada 1 minuto

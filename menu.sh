@@ -429,8 +429,12 @@ NETPLAN
 
         # 3. Aplicar configuraciones estrictas para compatibilidad IoT (ESP32)
         info "Aplicando configuraciones estrictas de compatibilidad IoT..."
+        sudo nmcli connection modify "$ssid" connection.autoconnect yes              # Persistencia: sobrevive reinicios
         sudo nmcli connection modify "$ssid" 802-11-wireless-security.key-mgmt wpa-psk
-        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pmf 1          # Desactivar PMF (WPA3)
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pmf 1          # PMF opcional (compatible ESP32)
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.proto rsn      # Forzar WPA2 puro (RSN)
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pairwise ccmp  # Cifrado AES pairwise
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.group ccmp     # Cifrado AES group
         sudo nmcli connection modify "$ssid" 802-11-wireless.mac-address-randomization 1  # Apagar aleatoriedad MAC
         sudo nmcli connection modify "$ssid" 802-11-wireless.powersave 2             # Apagar ahorro de energía
 

@@ -255,7 +255,7 @@ start_agent_udp() {
     
     # Leer puerto desde .env si existe
     if [ -f "$ENV_FILE" ]; then
-        local env_port=$(grep "^AGENT_PORT=" "$ENV_FILE" | cut -d'=' -f2)
+        local env_port=$(grep "^AGENT_PORT=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
         [ -n "$env_port" ] && AGENT_PORT=$env_port
     fi
     
@@ -384,7 +384,7 @@ check_env() {
     
     for var in "${required[@]}"; do
         if grep -q "^${var}=" "$ENV_FILE"; then
-            local value=$(grep "^${var}=" "$ENV_FILE" | cut -d'=' -f2)
+            local value=$(grep "^${var}=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
             if [ -n "$value" ] && [ "$value" != "TU_RED_WIFI" ] && [ "$value" != "TU_CONTRASEÑA" ]; then
                 success "$var configurado"
             else

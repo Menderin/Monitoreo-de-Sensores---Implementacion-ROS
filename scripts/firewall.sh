@@ -108,10 +108,10 @@ sudo iptables -A INPUT -i "$IF_LAN" -p icmp -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p tcp --dport 22 -j DROP
 
 # --- 5. Guardar reglas (persistencia) ---
-if ! dpkg -l iptables-persistent &>/dev/null 2>&1; then
-    echo "[*] Instalando iptables-persistent para guardar reglas..."
+if ! dpkg -l iptables-persistent &>/dev/null 2>&1 || ! dpkg -l netfilter-persistent &>/dev/null 2>&1; then
+    echo "[*] Instalando iptables-persistent y netfilter-persistent para guardar reglas..."
     # DEBIAN_FRONTEND=noninteractive evita el diálogo interactivo de instalación
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent -qq
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent netfilter-persistent -qq
 fi
 
 echo "[*] Guardando reglas permanentemente con netfilter-persistent..."

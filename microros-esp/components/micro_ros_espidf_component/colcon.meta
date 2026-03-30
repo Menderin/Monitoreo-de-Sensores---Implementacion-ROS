@@ -55,12 +55,6 @@
                 "-DERTPS_MAX_CLIENTS=1",
                 "-DERTPS_MAX_HISTORY=10"
             ]
-        },
-        "tracetools": {
-            "cmake-args": [
-                "-DTRACETOOLS_DISABLED=ON",
-                "-DTRACETOOLS_STATUS_CHECKING_TOOL=OFF"
-            ]
         }
     }
 }

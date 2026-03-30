@@ -1,6 +1,7 @@
 [Unit]
 Description=Gateway Monitoring System — ROS-to-MongoDB Bridge
-After=smart-agent.service
+After=network-online.target NetworkManager-wait-online.service smart-agent.service
+Wants=network-online.target
 Requires=smart-agent.service
 
 [Service]

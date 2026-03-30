@@ -1,6 +1,6 @@
 [Unit]
 Description=Gateway Monitoring System — micro-ROS Agent
-After=network-online.target NetworkManager.service
+After=network-online.target NetworkManager-wait-online.service
 Wants=network-online.target
 
 [Service]
