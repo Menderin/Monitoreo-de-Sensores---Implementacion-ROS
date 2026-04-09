@@ -237,18 +237,30 @@ static bool ros_entities_create(void)
     }
 
     // ── Nodo ───────────────────────────────────────────────────────
+    if (mac_address[0] == 0) {
+        esp_read_mac(mac_address, ESP_MAC_WIFI_STA);
+    }
+
     char node_name[32];
     snprintf(node_name, sizeof(node_name), "esp32_%02X%02X%02X",
              mac_address[3], mac_address[4], mac_address[5]);
-    RCCHECK(rclc_node_init_default(&node, node_name, "", &support));
+    rcl_ret_t rc = rclc_node_init_default(&node, node_name, "", &support);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_node_init_default fallo: %d", (int)rc);
+        goto create_fail;
+    }
     ESP_LOGI(TAG, "Nodo recreado: '%s'", node_name);
 
     // ── Publicador ─────────────────────────────────────────────────
-    RCCHECK(rclc_publisher_init_default(
+    rc = rclc_publisher_init_default(
         &sensor_data_publisher,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        "sensor_data"));
+        "sensor_data");
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_publisher_init_default fallo: %d", (int)rc);
+        goto create_fail;
+    }
 
     // Reutilizar buffer estático (NO malloc)
     data_sequence.data     = sensor_data_array;
@@ -261,11 +273,15 @@ static bool ros_entities_create(void)
     sensor_data_msg.layout.data_offset  = 0;
 
     // ── Suscriptor ─────────────────────────────────────────────────
-    RCCHECK(rclc_subscription_init_default(
+    rc = rclc_subscription_init_default(
         &motor_cmd_subscriber,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
-        TOPIC_MOTOR_CMD));
+        TOPIC_MOTOR_CMD);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_subscription_init_default fallo: %d", (int)rc);
+        goto create_fail;
+    }
 
     // Reutilizar buffer estático (NO malloc)
     motor_cmd_msg.data.data     = motor_cmd_buffer;
@@ -273,18 +289,33 @@ static bool ros_entities_create(void)
     motor_cmd_msg.data.size     = 0;
 
     // ── Executor ───────────────────────────────────────────────────
-    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-    RCCHECK(rclc_executor_add_subscription(
+    rc = rclc_executor_init(&executor, &support.context, 1, &allocator);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_executor_init fallo: %d", (int)rc);
+        goto create_fail;
+    }
+
+    rc = rclc_executor_add_subscription(
         &executor,
         &motor_cmd_subscriber,
         &motor_cmd_msg,
         &motor_cmd_callback,
-        ON_NEW_DATA));
+        ON_NEW_DATA);
+    if (rc != RCL_RET_OK) {
+        ESP_LOGE(TAG, "[Resilience] rclc_executor_add_subscription fallo: %d", (int)rc);
+        goto create_fail;
+    }
 
     initialized = true;
     ESP_LOGI(TAG, "[Resilience] Entidades ROS creadas. HEAP libre: %lu bytes",
              esp_get_free_heap_size());
     return true;
+
+create_fail:
+    // Evita estados parciales entre reintentos de init/hot-reload.
+    ros_entities_destroy();
+    rcl_reset_error();
+    return false;
 }
 
 // ========================================
@@ -302,21 +333,7 @@ bool ros_publisher_init(void)
     
     allocator = rcl_get_default_allocator();
     
-    // Inicializar opciones
-    rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
-    RCCHECK(rcl_init_options_init(&init_options, allocator));
-    
 #ifdef CONFIG_MICRO_ROS_ESP_XRCE_DDS_MIDDLEWARE
-    rmw_init_options_t* rmw_options = rcl_init_options_get_rmw_init_options(&init_options);
-    
-    // Configurar transporte UDP
-    ESP_LOGI(TAG, "Configurando transporte UDP...");
-    RCCHECK(rmw_uros_options_set_udp_address(
-        CONFIG_MICRO_ROS_AGENT_IP, 
-        CONFIG_MICRO_ROS_AGENT_PORT, 
-        rmw_options));
-    ESP_LOGI(TAG, "Transporte UDP configurado");
-
     // Persistir IP y puerto como strings (seguro ante cualquier fini posterior).
     strncpy(s_agent_ip,   CONFIG_MICRO_ROS_AGENT_IP,   sizeof(s_agent_ip)   - 1);
     strncpy(s_agent_port, CONFIG_MICRO_ROS_AGENT_PORT, sizeof(s_agent_port) - 1);
@@ -359,8 +376,6 @@ bool ros_publisher_init(void)
     ESP_LOGI(TAG, "  ros2 run micro_ros_agent micro_ros_agent udp4 --port %s",
              CONFIG_MICRO_ROS_AGENT_PORT);
 
-    RCCHECK(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator));
-
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  CONECTADO A MICRO-ROS AGENT!");
     ESP_LOGI(TAG, "========================================");
@@ -369,77 +384,16 @@ bool ros_publisher_init(void)
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);  // Power save mínimo
     vTaskDelay(pdMS_TO_TICKS(500));  // Delay mayor para estabilizar
     
-    // Debug: Mostrar memoria disponible
-    ESP_LOGI(TAG, "HEAP libre antes de crear nodo: %lu bytes", esp_get_free_heap_size());
-    
-    // Leer MAC para nombre único de nodo
-    if (mac_address[0] == 0) {
-        esp_read_mac(mac_address, ESP_MAC_WIFI_STA);
+    // Crear entidades ROS usando la ruta resiliente (con cleanup en fallo).
+    if (!ros_entities_create()) {
+        ESP_LOGE(TAG, "Fallo al crear entidades ROS en init");
+        return false;
     }
-    
-    // Crear nombre de nodo dinámico para evitar colisiones DDS
-    char node_name[32];
-    snprintf(node_name, sizeof(node_name), "esp32_%02X%02X%02X", 
-             mac_address[3], mac_address[4], mac_address[5]);
-    
-    // Crear nodo con nombre único
-    RCCHECK(rclc_node_init_default(&node, node_name, "", &support));
-    ESP_LOGI(TAG, "Nodo creado: '%s' (ID único basado en MAC)", node_name);
-    ESP_LOGI(TAG, "HEAP libre después de nodo: %lu bytes", esp_get_free_heap_size());
-    
-    // Crear publicador único para sensor_data (Float32MultiArray)
-    RCCHECK(rclc_publisher_init_default(
-        &sensor_data_publisher,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32MultiArray),
-        "sensor_data"));
-    ESP_LOGI(TAG, "Publicador creado: '/sensor_data' (Float32MultiArray)");
-    
-    // Optimización: Usar secuencia preallocada
-    data_sequence.data = sensor_data_array;
-    data_sequence.size = 5;
-    data_sequence.capacity = 5;
-    
-    sensor_data_msg.data = data_sequence;
-    
-    // Layout (opcional, para metadata) - sin alocar
-    sensor_data_msg.layout.dim.data = NULL;
-    sensor_data_msg.layout.dim.size = 0;
-    sensor_data_msg.layout.dim.capacity = 0;
-    sensor_data_msg.layout.data_offset = 0;
-    
-    ESP_LOGI(TAG, "HEAP libre antes de crear subscriber: %lu bytes", esp_get_free_heap_size());
-    
-    // Crear suscriptor para comandos de motor
-    RCCHECK(rclc_subscription_init_default(
-        &motor_cmd_subscriber,
-        &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
-        TOPIC_MOTOR_CMD));
-    ESP_LOGI(TAG, "Suscriptor creado: '/%s' (String)", TOPIC_MOTOR_CMD);
-    
-    // Inicializar buffer del mensaje
-    motor_cmd_msg.data.data = motor_cmd_buffer;
-    motor_cmd_msg.data.capacity = sizeof(motor_cmd_buffer);
-    motor_cmd_msg.data.size = 0;
-    
-    // Crear executor con 1 handle (el subscriber)
-    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-    RCCHECK(rclc_executor_add_subscription(
-        &executor,
-        &motor_cmd_subscriber,
-        &motor_cmd_msg,
-        &motor_cmd_callback,
-        ON_NEW_DATA));
-    ESP_LOGI(TAG, "Executor creado con 1 subscription");
-    
-    ESP_LOGI(TAG, "HEAP libre después de subscriber: %lu bytes", esp_get_free_heap_size());
     
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  SISTEMA ROS LISTO (PUBLISHER + SUBSCRIBER)");
     ESP_LOGI(TAG, "========================================");
     
-    initialized = true;
     return true;
 }
 

@@ -165,14 +165,14 @@ SDKEOF
         warning "No se encontró .env en $env_file — usando credenciales del sdkconfig existente"
     fi
 
-    info "Ejecutando: build → flash → monitor"
+    info "Ejecutando: build → erase_flash → flash → monitor"
     echo ""
 
     # Matar procesos del puerto
     sudo fuser -k "$ESP_PORT" 2>/dev/null || true
     sleep 1
 
-    idf.py -p "$ESP_PORT" -b 115200 build flash monitor
+    idf.py -p "$ESP_PORT" -b 115200 build erase_flash flash monitor
 }
 
 clean_esp32() {

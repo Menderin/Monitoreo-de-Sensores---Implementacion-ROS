@@ -79,6 +79,19 @@ static void wifi_init_sta(void)
             /* Forzar WPA2-PSK para hacer match con el Hotspot Legacy de la RPi */
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
 
+            /* Compatibilidad máxima con hotspots WPA2-PSK estándar.
+             * En ESP-IDF 5.x sin este campo, el driver puede rechazar
+             * APs que no anuncian WPA3 o que tienen PMF implícito. */
+            .threshold.authmode = WIFI_AUTH_WPA_WPA2_PSK,
+
+            /* PMF deshabilitado: el hotspot NetworkManager (Ubuntu)
+             * no siempre lo negocia correctamente con ESP32.
+             * capable=false + required=false = PMF completamente off. */
+            .pmf_cfg = {
+                .capable = false,
+                .required = false,
+            },
+
 #ifdef CONFIG_PM_ENABLE
             .listen_interval = 5,
             /* Listen interval for ESP32 station to receive beacon when WIFI_PS_MAX_MODEM is set.
@@ -86,6 +99,7 @@ static void wifi_init_sta(void)
 #endif //CONFIG_PM_ENABLE *
         },
     };
+
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_config) );
     ESP_ERROR_CHECK(esp_wifi_start() );
