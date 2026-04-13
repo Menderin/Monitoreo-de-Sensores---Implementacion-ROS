@@ -3,6 +3,7 @@ import json
 import sys
 import time
 import requests
+import argparse
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -194,5 +195,96 @@ def generar_reporte():
     else:
         print(f"[WARN] Reporte {id_reporte} NO marcado como enviado (fallo Telegram). Se reintentara.")
 
+def run_watchdog():
+    status_file = Path(__file__).resolve().parent / '.watchdog_status'
+    ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def trigger_error(msg_text):
+        if not status_file.exists():
+            msg = f"🚨 *WATCHDOG ALERTA* 🚨\n{msg_text}"
+            if enviar_telegram(msg):
+                with open(status_file, 'w') as f:
+                    f.write(ahora_utc.isoformat())
+        sys.exit(1)
+
+    def trigger_recovery():
+        if status_file.exists():
+            try:
+                with open(status_file, 'r') as f:
+                    last_alert_str = f.read().strip()
+                status_file.unlink()
+                
+                downtime_str = "tiempo desconocido"
+                if last_alert_str:
+                    last_alert_dt = datetime.fromisoformat(last_alert_str)
+                    diff = ahora_utc - last_alert_dt
+                    mins = int(diff.total_seconds() / 60)
+                    if mins < 60:
+                        downtime_str = f"{mins} minutos"
+                    else:
+                        horas = round(mins / 60, 1)
+                        downtime_str = f"{horas} horas"
+            except Exception as e:
+                print(f"[WARN] Error procesando recovery: {e}")
+                downtime_str = "tiempo desconocido"
+                if status_file.exists():
+                    status_file.unlink()
+
+            msg = f"✅ *Sistema Recuperado / Operativo* ✅\n"
+            msg += f"El flujo de datos de sensores ha vuelto a la normalidad.\n"
+            msg += f"⏱️ Tiempo detectado con fallos: *{downtime_str}*"
+            enviar_telegram(msg)
+            
+        sys.exit(0)
+
+    # Ping MongoDB y chequear ultima lectura
+    client = None
+    try:
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+        client.admin.command('ping')
+    except Exception as e:
+        trigger_error(f"Fallo al conectar a MongoDB:\n`{e}`")
+        
+    db = client[MONGO_DB_NAME]
+    col_sensors = db[MONGO_COL_SENSORS]
+    
+    try:
+        last_doc = col_sensors.find_one(sort=[("timestamp", -1)])
+    except Exception as e:
+        trigger_error(f"Fallo leyendo MongoDB:\n`{e}`")
+        
+    if not last_doc:
+        trigger_recovery()
+        
+    latest_ts = last_doc.get("timestamp")
+    if not latest_ts:
+        trigger_recovery()
+        
+    # Asegurar que latest_ts es naive o utc para comparar
+    if latest_ts.tzinfo is not None:
+        latest_ts = latest_ts.astimezone(timezone.utc).replace(tzinfo=None)
+
+    diff = ahora_utc - latest_ts
+    
+    if diff > timedelta(minutes=10):
+        mins = int(diff.total_seconds() / 60)
+        texto_error = f"⚠️ Los datos llevan congelados *{mins} minutos*.\n"
+        texto_error += f"🌡️ Último dato: {latest_ts.strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
+        texto_error += f"Verificar el Gateway/Sensores ROS."
+        trigger_error(texto_error)
+        
+    # Si todo esta normal (Mongo responde y lecturas son recientes)
+    trigger_recovery()
+
 if __name__ == "__main__":
-    generar_reporte()
+    parser = argparse.ArgumentParser(description="Smart Reporter for IoT Gateway")
+    parser.add_argument("--daily", action="store_true", help="Run daily report")
+    parser.add_argument("--watchdog", action="store_true", help="Run connectivity and data freshness watchdog")
+    args = parser.parse_args()
+    
+    if args.watchdog:
+        run_watchdog()
+    elif args.daily:
+        generar_reporte()
+    else:
+        parser.print_help()

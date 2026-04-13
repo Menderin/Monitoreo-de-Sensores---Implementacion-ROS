@@ -102,6 +102,8 @@ def _guardar_estado_alertas(estado):
         print(f"[WARN] No se pudo guardar estado de alertas: {e}")
 
 estado_alertas = _cargar_estado_alertas()
+out_of_bounds_counter = {}
+last_processed_ts = {}
 
 def enviar_telegram(mensaje):
     """Envía mensaje a Telegram. Retorna True si fue exitoso, False si falló."""
@@ -116,12 +118,10 @@ def enviar_telegram(mensaje):
         return False
 
 def check_alerts():
+    global out_of_bounds_counter, last_processed_ts
     if col_devices is None or col_sensors is None:
         print("[WARN] Colecciones MongoDB no configuradas, saltando ciclo.")
         return
-
-    ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    hace_2_minutos = ahora_utc - timedelta(minutes=2)
 
     dispositivos = col_devices.find()
 
@@ -131,64 +131,73 @@ def check_alerts():
         umbrales = dev.get('umbrales', {})
         sensores_hab = dev.get('configuracion', {}).get('sensores_habilitados', [])
 
-        query = {
-            "dispositivo_id": dev_id,
-            "timestamp": {"$gte": hace_2_minutos, "$lte": ahora_utc}
-        }
-        lecturas = list(col_sensors.find(query).sort("timestamp", -1))
-
-        if not lecturas:
-            continue
-
         for sensor in sensores_hab:
             # Buscar umbrales en inglés, buscar datos en español
             sensor_key = "temperature" if sensor == "temperatura" else sensor
             umbral = umbrales.get(sensor_key, {})
 
-            max_val = umbral.get('max_value')
-            min_val = umbral.get('min_value')
+            max_val = umbral.get('critical_max')
+            min_val = umbral.get('critical_min')
             unidad = umbral.get('unit', '')
 
             if max_val is None or min_val is None:
                 continue
 
-            valores = [doc['datos'].get(sensor) for doc in lecturas if sensor in doc.get('datos', {})]
-            valores = [v for v in valores if v is not None]
+            clave_memoria = f"{dev_id}_{sensor}"
+            if clave_memoria not in out_of_bounds_counter:
+                out_of_bounds_counter[clave_memoria] = 0
 
-            if len(valores) == 0:
+            # Obtener lecturas nuevas
+            query = {"dispositivo_id": dev_id}
+            if clave_memoria in last_processed_ts:
+                query["timestamp"] = {"$gt": last_processed_ts[clave_memoria]}
+            else:
+                # Si nunca se procesó, empezar desde hace 2 mins para no procesar toda la historia
+                ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+                query["timestamp"] = {"$gte": ahora_utc - timedelta(minutes=2)}
+
+            lecturas = list(col_sensors.find(query).sort("timestamp", 1))
+            if not lecturas:
                 continue
 
-            estado_actual = "normal"
-            if all(v > max_val for v in valores):
-                estado_actual = "alta"
-            elif all(v < min_val for v in valores):
-                estado_actual = "baja"
+            for doc in lecturas:
+                val = doc.get('datos', {}).get(sensor)
+                if val is None:
+                    continue
 
-            clave_memoria = f"{dev_id}_{sensor}"
-            estado_anterior = estado_alertas.get(clave_memoria, "normal")
+                last_processed_ts[clave_memoria] = doc['timestamp']
+                estado_anterior = estado_alertas.get(clave_memoria, "normal")
 
-            # Si hay una NUEVA alerta
-            if estado_actual != "normal" and estado_anterior == "normal":
-                val_prom = sum(valores) / len(valores)
-                msg = f"🚨 *ALERTA CRÍTICA* 🚨\n"
-                msg += f"📡 Dispositivo: *{alias}*\n"
-                msg += f"⚠️ Parámetro: *{sensor.capitalize()}* ({estado_actual})\n"
-                msg += f"📉 Rango seguro: {min_val}{unidad} - {max_val}{unidad}\n"
-                msg += f"🌡️ Valor actual (2 min): *{val_prom:.2f}{unidad}*"
-                if enviar_telegram(msg):
-                    estado_alertas[clave_memoria] = estado_actual
-                    _guardar_estado_alertas(estado_alertas)
+                if val < min_val or val > max_val:
+                    out_of_bounds_counter[clave_memoria] += 1
+                    
+                    if out_of_bounds_counter[clave_memoria] >= 15:
+                        estado_actual = "alta" if val > max_val else "baja"
+                        # Alertar solo si acaba de salir de normal o si necesitamos reenviar (cooldown cumplido pero sin reingreso)
+                        # Aquí, si mantenemos estado persistente, no mandamos SPAM, sólo 1 vez hasta volver a la normalidad
+                        if estado_anterior == "normal":
+                            msg = f"🚨 *ALERTA CRÍTICA* 🚨\n"
+                            msg += f"📡 Dispositivo: *{alias}*\n"
+                            msg += f"⚠️ Parámetro: *{sensor.capitalize()}* ({estado_actual})\n"
+                            msg += f"📉 Rango crítico: {min_val}{unidad} - {max_val}{unidad}\n"
+                            msg += f"🌡️ Último valor: *{val:.2f}{unidad}*"
+                            if enviar_telegram(msg):
+                                estado_alertas[clave_memoria] = estado_actual
+                                _guardar_estado_alertas(estado_alertas)
+                        # Cooldown: reiniciamos contador aunque siga fuera de rango
+                        out_of_bounds_counter[clave_memoria] = 0
 
-            # Si la situación se NORMALIZÓ
-            elif estado_actual == "normal" and estado_anterior != "normal":
-                ultima_lectura = valores[0]
-                msg = f"✅ *SITUACIÓN NORMALIZADA* ✅\n"
-                msg += f"📡 Dispositivo: *{alias}*\n"
-                msg += f"👍 El parámetro *{sensor.capitalize()}* volvió a rango seguro.\n"
-                msg += f"🌡️ Valor actual: *{ultima_lectura:.2f}{unidad}*"
-                if enviar_telegram(msg):
-                    estado_alertas[clave_memoria] = "normal"
-                    _guardar_estado_alertas(estado_alertas)
+                else:
+                    # Se normalizó el valor o fue un pico esporádico
+                    out_of_bounds_counter[clave_memoria] = 0
+                    if estado_anterior != "normal":
+                        msg = f"✅ *SITUACIÓN NORMALIZADA* ✅\n"
+                        msg += f"📡 Dispositivo: *{alias}*\n"
+                        msg += f"👍 El parámetro *{sensor.capitalize()}* volvió a rango seguro.\n"
+                        msg += f"🌡️ Valor actual: *{val:.2f}{unidad}*"
+                        if enviar_telegram(msg):
+                            estado_alertas[clave_memoria] = "normal"
+                            _guardar_estado_alertas(estado_alertas)
 
 if __name__ == "__main__":
     try:
@@ -202,5 +211,5 @@ if __name__ == "__main__":
             check_alerts()
         except Exception as e:
             print(f"[ERROR] Error en el ciclo de alertas: {e}")
-            # No crashear, esperar y reintentar
-        time.sleep(60)  # Revisión cada 1 minuto
+            time.sleep(10)
+        time.sleep(10)  # Revisión cada 10 segundos para procesar rápido las nuevas lecturas
