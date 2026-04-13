@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+import json
 import time
 import requests
 from pathlib import Path
@@ -81,17 +82,38 @@ for attempt in range(1, MAX_RETRIES + 1):
             sys.exit(1)
         time.sleep(10)
 
-# Memoria para no spamear alertas repetidas
-estado_alertas = {}
+# Memoria persistente para no spamear alertas repetidas (sobrevive reinicios)
+ESTADO_ALERTAS_FILE = str(Path(__file__).resolve().parent / 'alerter_estado.json')
+
+def _cargar_estado_alertas():
+    if os.path.exists(ESTADO_ALERTAS_FILE):
+        try:
+            with open(ESTADO_ALERTAS_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+def _guardar_estado_alertas(estado):
+    try:
+        with open(ESTADO_ALERTAS_FILE, 'w') as f:
+            json.dump(estado, f)
+    except IOError as e:
+        print(f"[WARN] No se pudo guardar estado de alertas: {e}")
+
+estado_alertas = _cargar_estado_alertas()
 
 def enviar_telegram(mensaje):
+    """Envía mensaje a Telegram. Retorna True si fue exitoso, False si falló."""
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     try:
         respuesta = requests.post(url, json=payload, timeout=10)
         respuesta.raise_for_status()
+        return True
     except requests.exceptions.RequestException as e:
         print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
+        return False
 
 def check_alerts():
     if col_devices is None or col_sensors is None:
@@ -153,8 +175,9 @@ def check_alerts():
                 msg += f"⚠️ Parámetro: *{sensor.capitalize()}* ({estado_actual})\n"
                 msg += f"📉 Rango seguro: {min_val}{unidad} - {max_val}{unidad}\n"
                 msg += f"🌡️ Valor actual (2 min): *{val_prom:.2f}{unidad}*"
-                enviar_telegram(msg)
-                estado_alertas[clave_memoria] = estado_actual
+                if enviar_telegram(msg):
+                    estado_alertas[clave_memoria] = estado_actual
+                    _guardar_estado_alertas(estado_alertas)
 
             # Si la situación se NORMALIZÓ
             elif estado_actual == "normal" and estado_anterior != "normal":
@@ -163,8 +186,9 @@ def check_alerts():
                 msg += f"📡 Dispositivo: *{alias}*\n"
                 msg += f"👍 El parámetro *{sensor.capitalize()}* volvió a rango seguro.\n"
                 msg += f"🌡️ Valor actual: *{ultima_lectura:.2f}{unidad}*"
-                enviar_telegram(msg)
-                estado_alertas[clave_memoria] = "normal"
+                if enviar_telegram(msg):
+                    estado_alertas[clave_memoria] = "normal"
+                    _guardar_estado_alertas(estado_alertas)
 
 if __name__ == "__main__":
     try:

@@ -8,7 +8,7 @@
 # ── Aislamiento DDS: solo loopback (evita bucles en interfaces múltiples) ────
 export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
-MICROROS_WS="${MICROROS_WS:-{{USER_HOME}}/microros_ws}"
+MICROROS_WS="${MICROROS_WS:-$HOME/microros_ws}"
 
 # REPO_DIR: un nivel arriba de este script (scripts/../)
 REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"

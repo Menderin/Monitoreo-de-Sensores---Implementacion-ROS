@@ -1,11 +1,19 @@
 import os
 import json
+import sys
+import time
 import requests
 from pathlib import Path
-from pymongo import MongoClient
-import pandas as pd
 from datetime import datetime, timedelta, timezone
-from dotenv import load_dotenv
+
+try:
+    from pymongo import MongoClient
+    from dotenv import load_dotenv
+    import pandas as pd
+except ImportError as e:
+    print(f"[FATAL] Dependencia Python faltante: {e}")
+    print("[FATAL] Instala con: pip3 install pymongo python-dotenv pandas --break-system-packages")
+    sys.exit(1)
 
 # ==========================================
 # 1. CONFIGURACIÓN DE ENTORNO
@@ -13,7 +21,10 @@ from dotenv import load_dotenv
 # Ruta dinámica al .env (scripts/telegram/ → repo_root/database/.env)
 env_path = Path(__file__).resolve().parents[2] / 'database' / '.env'
 if not env_path.exists():
-    raise FileNotFoundError(f".env no encontrado: {env_path}")
+    print(f"[FATAL] .env no encontrado: {env_path}")
+    print("[FATAL] Crea database/.env con las credenciales necesarias.")
+    sys.exit(1)
+
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -23,6 +34,20 @@ MONGO_COL_DEVICES = os.getenv("MONGO_COLLECTION_DISPOSITIVOS")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ESTADO_FILE = str(Path(__file__).resolve().parent / 'reporte_estado.json')
+
+# Validar variables críticas antes de continuar
+_missing = []
+if not MONGO_URI:
+    _missing.append("MONGO_URI")
+if not MONGO_DB_NAME:
+    _missing.append("MONGO_DB")
+if not TOKEN:
+    _missing.append("TELEGRAM_BOT_TOKEN")
+if not CHAT_ID:
+    _missing.append("TELEGRAM_CHAT_ID")
+if _missing:
+    print(f"[FATAL] Variables de entorno faltantes en {env_path}: {', '.join(_missing)}")
+    sys.exit(1)
 
 # ==========================================
 # 2. FUNCIONES DE MEMORIA (Antispam)
@@ -38,10 +63,16 @@ def guardar_estado(estado):
         json.dump(estado, f)
 
 def enviar_telegram(mensaje):
+    """Envía mensaje a Telegram. Retorna True si fue exitoso, False si falló."""
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
-    respuesta = requests.post(url, json=payload, timeout=10)
-    respuesta.raise_for_status()
+    try:
+        respuesta = requests.post(url, json=payload, timeout=15)
+        respuesta.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
+        return False
 
 # ==========================================
 # 3. LÓGICA DE TURNOS (08:00 y 20:00)
@@ -81,7 +112,22 @@ def generar_reporte():
     if estado.get(id_reporte) == True:
         return
 
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    # Conexión con reintentos (alineado con smart_alerter.py)
+    MAX_RETRIES = 3
+    client = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
+            client.admin.command('ping')
+            print(f"[OK] Conectado a MongoDB (intento {attempt}/{MAX_RETRIES})")
+            break
+        except Exception as e:
+            print(f"[WARN] MongoDB no disponible (intento {attempt}/{MAX_RETRIES}): {e}")
+            if attempt == MAX_RETRIES:
+                print("[ERROR] No se pudo conectar a MongoDB. Reporte no generado.")
+                return
+            time.sleep(5)
+
     db = client[MONGO_DB_NAME]
     col_devices = db[MONGO_COL_DEVICES]
     col_sensors = db[MONGO_COL_SENSORS]
@@ -142,12 +188,11 @@ def generar_reporte():
     if not datos_encontrados:
         mensaje += "⚠️ No se registraron datos en este periodo.\n"
         
-    try:
-        enviar_telegram(mensaje)
+    if enviar_telegram(mensaje):
         estado[id_reporte] = True
         guardar_estado(estado)
-    except Exception as e:
-        print(f"Error enviando reporte: {e}")
+    else:
+        print(f"[WARN] Reporte {id_reporte} NO marcado como enviado (fallo Telegram). Se reintentara.")
 
 if __name__ == "__main__":
     generar_reporte()

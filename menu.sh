@@ -542,6 +542,14 @@ deploy_services() {
         success "  pymongo: OK"
     fi
 
+    if ! python3 -c "import pandas" &>/dev/null 2>&1; then
+        warn "  [!] pandas NO disponible."
+        warn "      pip3 install pandas --break-system-packages"
+        missing=$((missing + 1))
+    else
+        success "  pandas: OK"
+    fi
+
     if [[ $missing -gt 0 ]]; then
         echo ""
         warn "$missing dependencia(s) faltante(s). ¿Continuar de todas formas? [s/N]"
@@ -569,6 +577,7 @@ deploy_services() {
         info "Generando $svc_name ..."
         sed \
             -e "s|{{USER}}|${current_user}|g" \
+            -e "s|{{USER_HOME}}|${HOME}|g" \
             -e "s|{{SCRIPTS_DIR}}|${SCRIPTS_DIR}|g" \
             -e "s|{{REPO_DIR}}|${REPO_DIR}|g" \
             "$tpl" | sudo tee "$dest" > /dev/null
