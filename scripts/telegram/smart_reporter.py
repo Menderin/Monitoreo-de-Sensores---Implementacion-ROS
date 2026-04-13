@@ -76,28 +76,22 @@ def enviar_telegram(mensaje):
         return False
 
 # ==========================================
-# 3. LÓGICA DE TURNOS (08:00 y 20:00)
+# 3. LÓGICA DE TURNOS (Dinámica para Cronjob)
 # ==========================================
 def obtener_ventana_tiempo():
     ahora = datetime.now()
     
-    if 8 <= ahora.hour < 20:
-        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_manana"
-        fin_local = ahora.replace(hour=8, minute=0, second=0, microsecond=0)
-        tipo = "🌅 Reporte de Mañana" if ahora.hour == 8 else "🌅 Reporte de Mañana (Recuperado)"
-            
-    elif ahora.hour >= 20:
-        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_tarde"
-        fin_local = ahora.replace(hour=20, minute=0, second=0, microsecond=0)
-        tipo = "🌃 Reporte de Tarde" if ahora.hour == 20 else "🌃 Reporte de Tarde (Recuperado)"
-            
-    else:
-        ayer = ahora - timedelta(days=1)
-        id_reporte = f"{ayer.strftime('%Y-%m-%d')}_tarde"
-        fin_local = ayer.replace(hour=20, minute=0, second=0, microsecond=0)
-        tipo = "🌃 Reporte de Tarde (Recuperado)"
-
+    # Delegamos el horario exacto al Cronjob. Solo miramos ~12h hacia atrás.
+    fin_local = ahora.replace(minute=0, second=0, microsecond=0)
     inicio_local = fin_local - timedelta(hours=12)
+    
+    if ahora.hour < 14:
+        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_manana_{ahora.hour}h"
+        tipo = "🌅 Reporte de Mañana"
+    else:
+        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_tarde_{ahora.hour}h"
+        tipo = "🌃 Reporte de Tarde"
+
     fin_utc = fin_local.astimezone(timezone.utc).replace(tzinfo=None)
     inicio_utc = inicio_local.astimezone(timezone.utc).replace(tzinfo=None)
     
@@ -108,9 +102,14 @@ def obtener_ventana_tiempo():
 # ==========================================
 def generar_reporte():
     id_reporte, inicio_utc, fin_utc, tipo_reporte, inicio_local, fin_local = obtener_ventana_tiempo()
+    print(f"[DEBUG] Iniciando generación de {tipo_reporte} (ID: {id_reporte})")
+    print(f"[DEBUG] Ventana de extracción (Local): {inicio_local} -> {fin_local}")
+    print(f"[DEBUG] Ventana de extracción (UTC): {inicio_utc} -> {fin_utc}")
+    
     estado = cargar_estado()
     
     if estado.get(id_reporte) == True:
+        print(f"[DEBUG] El reporte '{id_reporte}' ya fue enviado en esta hora. Abortando para evitar SPAM.")
         return
 
     # Conexión con reintentos (alineado con smart_alerter.py)
@@ -143,12 +142,14 @@ def generar_reporte():
         dev_id = dev['_id']
         alias = dev.get('alias', dev_id)
         sensores_hab = dev.get('configuracion', {}).get('sensores_habilitados', [])
+        print(f"[DEBUG] Extrayendo datos para dispositivo: {alias} ({dev_id})...")
         
         query = {
             "dispositivo_id": dev_id,
             "timestamp": {"$gte": inicio_utc, "$lte": fin_utc}
         }
         lecturas = list(col_sensors.find(query))
+        print(f"[DEBUG] Filas encontradas: {len(lecturas)}")
         
         if not lecturas:
             continue
@@ -186,14 +187,18 @@ def generar_reporte():
         mensaje += "```\n\n"
         # 🔴 FIN DE LA TABLA
         
+    print(f"[DEBUG] Terminada la evaluación de dispositivos. datos_encontrados={datos_encontrados}")
     if not datos_encontrados:
+        print("[DEBUG] No hay datos para hoy en la ventana de tiempo indicada.")
         mensaje += "⚠️ No se registraron datos en este periodo.\n"
         
+    print("[DEBUG] Intentando enviar reporte final a Telegram...")
     if enviar_telegram(mensaje):
+        print(f"[DEBUG] Reporte '{id_reporte}' enviado y marcado en memoria antispam.")
         estado[id_reporte] = True
         guardar_estado(estado)
     else:
-        print(f"[WARN] Reporte {id_reporte} NO marcado como enviado (fallo Telegram). Se reintentara.")
+        print(f"[ERROR] Reporte '{id_reporte}' falló al enviarse.")
 
 def run_watchdog():
     status_file = Path(__file__).resolve().parent / '.watchdog_status'
