@@ -2,9 +2,12 @@
 # ==============================================================================
 # start_agent.sh — Gateway Monitoring System
 # Lanza el micro-ROS Agent (modo daemon / systemd)
-# Compatible con cualquier usuario Linux (sin rutas estáticas)
+# La variable {{USER_HOME}} es reemplazada por install.sh con la ruta real.
 # Lee AGENT_PORT dinámicamente desde el .env de WiFi.
 # ==============================================================================
+
+# ── Aislamiento DDS: solo loopback (evita bucles en interfaces múltiples) ────
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 MICROROS_WS="${MICROROS_WS:-$HOME/microros_ws}"
 

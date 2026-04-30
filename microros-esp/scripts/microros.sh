@@ -149,10 +149,10 @@ build_flash_monitor() {
     local env_file="$PROJECT_DIR/main/versions/wifi/.env"
     if [[ -f "$env_file" ]]; then
         local ssid pass agent_ip agent_port
-        ssid=$(grep "^WIFI_SSID=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
-        pass=$(grep "^WIFI_PASSWORD=" "$env_file" | cut -d'=' -f2-)
-        agent_ip=$(grep "^AGENT_IP=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
-        agent_port=$(grep "^AGENT_PORT=" "$env_file" | cut -d'=' -f2- | tr -d '[:space:]')
+        ssid=$(grep "^WIFI_SSID=" "$env_file" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
+        pass=$(grep "^WIFI_PASSWORD=" "$env_file" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
+        agent_ip=$(grep "^AGENT_IP=" "$env_file" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
+        agent_port=$(grep "^AGENT_PORT=" "$env_file" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
         cat > "$PROJECT_DIR/sdkconfig.defaults" <<SDKEOF
 CONFIG_ESP_WIFI_SSID="${ssid}"
 CONFIG_ESP_WIFI_PASSWORD="${pass}"
@@ -165,14 +165,14 @@ SDKEOF
         warning "No se encontró .env en $env_file — usando credenciales del sdkconfig existente"
     fi
 
-    info "Ejecutando: build → flash → monitor"
+    info "Ejecutando: build → erase_flash → flash → monitor"
     echo ""
 
     # Matar procesos del puerto
     sudo fuser -k "$ESP_PORT" 2>/dev/null || true
     sleep 1
 
-    idf.py -p "$ESP_PORT" -b 115200 build flash monitor
+    idf.py -p "$ESP_PORT" -b 115200 build erase_flash flash monitor
 }
 
 clean_esp32() {
@@ -255,7 +255,7 @@ start_agent_udp() {
     
     # Leer puerto desde .env si existe
     if [ -f "$ENV_FILE" ]; then
-        local env_port=$(grep "^AGENT_PORT=" "$ENV_FILE" | cut -d'=' -f2)
+        local env_port=$(grep "^AGENT_PORT=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
         [ -n "$env_port" ] && AGENT_PORT=$env_port
     fi
     
@@ -384,7 +384,7 @@ check_env() {
     
     for var in "${required[@]}"; do
         if grep -q "^${var}=" "$ENV_FILE"; then
-            local value=$(grep "^${var}=" "$ENV_FILE" | cut -d'=' -f2)
+            local value=$(grep "^${var}=" "$ENV_FILE" | cut -d'=' -f2 | tr -d '"' | tr -d "'" | tr -d '\r')
             if [ -n "$value" ] && [ "$value" != "TU_RED_WIFI" ] && [ "$value" != "TU_CONTRASEÑA" ]; then
                 success "$var configurado"
             else

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# menu.sh — Monitor de Microalgas UCN  v3.0
-# Menú principal del sistema — Raspberry Pi 400 / Gateway BioFloc
+# menu.sh — IoT Gateway Monitoring System  v3.0
+# Menú principal del sistema — IoT Sensor Gateway
 #
 # Estructura:
 #   0) Instalación de Dependencias   (ROS 2, ESP-IDF, micro-ROS)
@@ -94,8 +94,8 @@ show_header() {
     clear
     echo -e "${BOLD}${BLUE}╔══════════════════════════════════════════════╗${RESET}"
     echo -e "${BOLD}${BLUE}║                                              ║${RESET}"
-    echo -e "${BOLD}${BLUE}║   ${CYAN}Monitor de Microalgas UCN  v3.0${BLUE}          ║${RESET}"
-    echo -e "${BOLD}${BLUE}║   ${YELLOW}Raspberry Pi 400 — Gateway BioFloc${BLUE}       ║${RESET}"
+    echo -e "${BOLD}${BLUE}║   ${CYAN}IoT Gateway Monitoring System  v3.0${BLUE}      ║${RESET}"
+    echo -e "${BOLD}${BLUE}║   ${YELLOW}IoT Sensor Gateway${BLUE}                       ║${RESET}"
     echo -e "${BOLD}${BLUE}║                                              ║${RESET}"
     echo -e "${BOLD}${BLUE}╚══════════════════════════════════════════════╝${RESET}"
     echo ""
@@ -286,10 +286,11 @@ edit_telegram_env() {
     read -rp "  Presiona Enter para continuar..." _
 }
 
-# ── 1d. Configurar Hotspot WiFi ───────────────────────────────────────────────
+# ── 1d. Configurar Hotspot WiFi ───────────────────────────────────────────
 configure_hotspot() {
     echo ""
     echo -e "${BOLD}  Configurar Hotspot WiFi — Red de Sensores ESP32${RESET}"
+    echo -e "  ${YELLOW}Modo Legacy: 2.4GHz · WPA2 · Canal 6 · Sin PMF${RESET}"
     echo ""
     echo -e "  Crea un punto de acceso WiFi en ${CYAN}wlan0${RESET} con IP ${CYAN}10.42.0.1${RESET}."
     echo -e "  Configura los ESP32 con ${CYAN}AGENT_IP=10.42.0.1${RESET} en el .env de WiFi (opción 1b)."
@@ -309,8 +310,8 @@ configure_hotspot() {
         success "NetworkManager instalado y activo."
     fi
 
-    # Leer SSID y contraseña del .env WiFi (si están configurados)
-    local ssid="BioFloc-Sensors" pass="biofloc2024"
+    # Leer SSID y contraseña del .env WiFi — NO hay fallback hardcodeado
+    local ssid="" pass=""
     if [[ -f "$WIFI_ENV" ]]; then
         local _ssid _pass
         _ssid=$(grep "^WIFI_SSID="     "$WIFI_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
@@ -318,16 +319,31 @@ configure_hotspot() {
         [[ -n "$_ssid" && "$_ssid" != "TU_RED_WIFI"    ]] && ssid="$_ssid"
         [[ -n "$_pass" && "$_pass" != "TU_CONTRASEÑA"  ]] && pass="$_pass"
     fi
-    # Nombre interno de la conexión NetworkManager (dinámico)
-    local ap_con_name="${ssid}-AP"
+
+    # Si no hay credenciales seguras, pedir por teclado o abortar
+    if [[ -z "$ssid" || -z "$pass" ]]; then
+        warn "No se encontraron credenciales WiFi seguras en el .env."
+        warn "No se usarán contraseñas por defecto por seguridad."
+        echo ""
+        read -rp "  Ingresa el SSID del Hotspot (o Enter para cancelar): " ssid
+        [[ -z "$ssid" ]] && { info "Operación cancelada. Configura el .env primero (opción 1b)."; read -rp "  Presiona Enter..." _; return; }
+        read -rsp "  Ingresa la contraseña del Hotspot (mínimo 8 caracteres): " pass; echo ""
+        if [[ ${#pass} -lt 8 ]]; then
+            error "La contraseña debe tener al menos 8 caracteres (requisito WPA)."
+            read -rp "  Presiona Enter para volver..." _; return
+        fi
+    fi
 
     # Interfaz WiFi (configurable; por defecto wlan0)
     local interface="wlan0"
 
-    echo -e "  ${BOLD}Configuración para el AP:${RESET}"
+    echo -e "  ${BOLD}Configuración para el AP (Legacy IoT):${RESET}"
     echo -e "    SSID     : ${CYAN}$ssid${RESET}"
     echo -e "    Password : ${CYAN}$pass${RESET}"
     echo -e "    Interfaz : ${CYAN}$interface${RESET}"
+    echo -e "    Banda    : ${CYAN}2.4 GHz (bg)${RESET}"
+    echo -e "    Canal    : ${CYAN}6${RESET}"
+    echo -e "    Seguridad: ${CYAN}WPA2-PSK (sin PMF/WPA3)${RESET}"
     echo -e "    IP GW    : ${CYAN}10.42.0.1/24${RESET}"
     echo ""
 
@@ -347,6 +363,33 @@ configure_hotspot() {
     # ── Pre-vuelo 2: Delegar interfaz a NetworkManager (anti-Netplan) ─────────
     local netplan_nm="/etc/netplan/99-networkmanager.yaml"
     if [[ ! -f "$netplan_nm" ]]; then
+        # Backup de configuración Netplan existente
+        local netplan_backup="/etc/netplan/backup-$(date +%Y%m%d-%H%M%S)"
+        if ls /etc/netplan/*.yaml &>/dev/null; then
+            info "Creando backup de Netplan existente en $netplan_backup/ ..."
+            sudo mkdir -p "$netplan_backup"
+            sudo cp /etc/netplan/*.yaml "$netplan_backup/" 2>/dev/null || true
+            success "  Backup creado: $netplan_backup/"
+        fi
+
+        # Verificar si hay un renderer distinto configurado
+        local current_renderer
+        current_renderer=$(grep -rh 'renderer:' /etc/netplan/*.yaml 2>/dev/null | awk '{print $2}' | head -1 || true)
+        if [[ -n "$current_renderer" && "$current_renderer" != "NetworkManager" ]]; then
+            echo ""
+            warn "════════════════════════════════════════════════════════════"
+            warn "  ¡ATENCIÓN! Ya hay un renderer configurado: $current_renderer"
+            warn "  Cambiar a NetworkManager podría afectar tu conectividad (SSH)."
+            warn "  Se creó un backup en: $netplan_backup/"
+            warn "════════════════════════════════════════════════════════════"
+            echo ""
+            read -rp "  ¿Continuar y sobrescribir con NetworkManager? [s/N]: " confirm_renderer
+            if [[ ! "$confirm_renderer" =~ ^[sS]$ ]]; then
+                info "Operación cancelada. Netplan no fue modificado."
+                read -rp "  Presiona Enter para volver..." _; return
+            fi
+        fi
+
         info "Delegando '$interface' a NetworkManager en Netplan..."
         sudo tee "$netplan_nm" > /dev/null <<'NETPLAN'
 network:
@@ -368,25 +411,58 @@ NETPLAN
     sudo nmcli device disconnect "$interface" 2>/dev/null || true
     sleep 1
 
-    info "Eliminando conexión '${ap_con_name}' anterior (si existe)..."
-    sudo nmcli con delete "${ap_con_name}" 2>/dev/null || true
+    # ══════════════════════════════════════════════════════════════════════════
+    # SECUENCIA LEGACY — Compatible con ESP32 + Broadcom RPi 400
+    # Soluciona: error -52 del driver, rechazo WPA3/PMF, banda 5GHz
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # 1. Destruir cualquier perfil previo para evitar conflictos y amnesia de NetworkManager
+    info "Eliminando perfiles WiFi anteriores (anti-amnesia NM)..."
+    sudo nmcli connection delete "$ssid" 2>/dev/null || true
+    sudo nmcli connection delete Hotspot 2>/dev/null || true
     sleep 1
 
-    info "Creando punto de acceso '${ap_con_name}'..."
-    if sudo nmcli con add type wifi ifname "$interface" con-name "${ap_con_name}" autoconnect yes ssid "$ssid" \
-        && sudo nmcli con modify "${ap_con_name}" \
-            802-11-wireless.mode ap \
-            802-11-wireless-security.key-mgmt wpa-psk \
-            802-11-wireless-security.psk "$pass" \
-            ipv4.method shared \
-            ipv4.addresses "10.42.0.1/24" \
-        && sudo nmcli con up "${ap_con_name}"; then
-        echo ""
-        success "════════════════════════════════════════════"
-        success "  ¡Hotspot activo!  📡"
-        success "  SSID: $ssid  |  GW: 10.42.0.1"
-        success "════════════════════════════════════════════"
-        info "Asegúrate de que AGENT_IP=10.42.0.1 en el .env de WiFi (opción 1b)."
+    # 2. Crear el perfil desde cero, forzando nombre, clave, banda 2.4GHz (bg) y canal 6
+    info "Creando Hotspot Legacy: banda=bg, canal=6, WPA2-PSK..."
+    if sudo nmcli device wifi hotspot ifname "$interface" con-name "$ssid" ssid "$ssid" \
+            password "$pass" band bg channel 6; then
+
+        # 3. Aplicar configuraciones estrictas para compatibilidad IoT (ESP32)
+        info "Aplicando configuraciones estrictas de compatibilidad IoT..."
+        sudo nmcli connection modify "$ssid" connection.autoconnect yes              # Persistencia: sobrevive reinicios
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.key-mgmt wpa-psk
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pmf 1          # PMF opcional (compatible ESP32)
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.proto rsn      # Forzar WPA2 puro (RSN)
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.pairwise ccmp  # Cifrado AES pairwise
+        sudo nmcli connection modify "$ssid" 802-11-wireless-security.group ccmp     # Cifrado AES group
+        sudo nmcli connection modify "$ssid" 802-11-wireless.mac-address-randomization 1  # Apagar aleatoriedad MAC
+        sudo nmcli connection modify "$ssid" 802-11-wireless.powersave 2             # Apagar ahorro de energía
+
+        # 4. Reiniciar el perfil para aplicar todo de forma limpia
+        info "Reiniciando perfil para aplicar configuración..."
+        if sudo nmcli connection up "$ssid"; then
+            echo ""
+            success "════════════════════════════════════════════"
+            success "  ¡Hotspot Legacy activo!  📡"
+            success "  SSID: $ssid  |  GW: 10.42.0.1"
+            success "  Banda: 2.4GHz  |  Canal: 6  |  WPA2-PSK"
+            success "════════════════════════════════════════════"
+            info "Asegúrate de que AGENT_IP=10.42.0.1 en el .env de WiFi (opción 1b)."
+
+            # 5. Aplicar Firewall automáticamente tras levantar el Hotspot
+            echo ""
+            info "Aplicando Firewall (iptables) automáticamente..."
+            local fw_script="$SCRIPTS_DIR/firewall.sh"
+            if [[ -f "$fw_script" ]]; then
+                sudo bash "$fw_script"
+                success "Firewall aplicado y persistente tras Hotspot."
+            else
+                warn "scripts/firewall.sh no encontrado. Aplícalo manualmente (opción 3c)."
+            fi
+        else
+            error "Hotspot creado pero no se pudo activar el perfil."
+            warn  "Intenta manualmente: sudo nmcli connection up '$ssid'"
+        fi
     else
         error "No se pudo crear el punto de acceso."
         warn  "Verifica que '$interface' exista: ip link show $interface"
@@ -466,6 +542,14 @@ deploy_services() {
         success "  pymongo: OK"
     fi
 
+    if ! python3 -c "import pandas" &>/dev/null 2>&1; then
+        warn "  [!] pandas NO disponible."
+        warn "      pip3 install pandas --break-system-packages"
+        missing=$((missing + 1))
+    else
+        success "  pandas: OK"
+    fi
+
     if [[ $missing -gt 0 ]]; then
         echo ""
         warn "$missing dependencia(s) faltante(s). ¿Continuar de todas formas? [s/N]"
@@ -493,6 +577,7 @@ deploy_services() {
         info "Generando $svc_name ..."
         sed \
             -e "s|{{USER}}|${current_user}|g" \
+            -e "s|{{USER_HOME}}|${HOME}|g" \
             -e "s|{{SCRIPTS_DIR}}|${SCRIPTS_DIR}|g" \
             -e "s|{{REPO_DIR}}|${REPO_DIR}|g" \
             "$tpl" | sudo tee "$dest" > /dev/null
@@ -514,7 +599,7 @@ deploy_services() {
         info "Alias 'status' ya existe en ~/.bashrc — sin cambios."
     else
         echo "" >> "$HOME/.bashrc"
-        echo "# Gateway BioFloc — acceso rápido al panel de estado" >> "$HOME/.bashrc"
+        echo "# IoT Gateway — acceso rápido al panel de estado" >> "$HOME/.bashrc"
         echo "$alias_line" >> "$HOME/.bashrc"
         success "Alias 'status' añadido a ~/.bashrc"
     fi

@@ -24,7 +24,9 @@ def parse_env_file(filepath):
                 if line and not line.startswith('#'):
                     if '=' in line:
                         key, value = line.split('=', 1)
-                        config[key.strip()] = value.strip()
+                        # Limpiar: quitar \r (Windows), espacios, y comillas envolventes
+                        value = value.strip().strip('\r').strip('"').strip("'")
+                        config[key.strip()] = value
         return config
     except FileNotFoundError:
         print(f"❌ ERROR: No se encontró el archivo .env en: {filepath}")

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# install.sh — Monitor de Microalgas UCN
+# install.sh — IoT Gateway Monitoring System
 # Instalación nativa en Ubuntu 24.04 (ROS 2 Jazzy + micro-ROS + Python deps)
 #
 # Uso:
@@ -9,7 +9,7 @@
 # Variables de entorno opcionales:
 #   REPO_URL    URL del repositorio git (por defecto: GitHub oficial)
 #   REPO_BRANCH Rama a clonar (por defecto: main)
-#   INSTALL_DIR Directorio de instalación (por defecto: ~/Microalgas-Monitoring)
+#   INSTALL_DIR Directorio de instalación (por defecto: ~/IoT-Gateway)
 # ==============================================================================
 
 set -euo pipefail
@@ -28,9 +28,12 @@ header()  { echo -e "\n${BOLD}${CYAN}══════════════�
 
 # ─── Opciones APT para redes restrictivas (CGNAT / universitarias) ────────────
 # ForceIPv4   : evita bloqueos IPv6 en redes móviles/universitarias.
-# Verify-Peer / Verify-Host = false: evita errores de certificado durante
-#   la instalación inicial. NO deshabilita TLS en tiempo de ejecución.
-APT_OPTS="-o Acquire::ForceIPv4=true -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"
+# Para redes con problemas de certificados: INSECURE_APT=1 ./install.sh
+APT_OPTS="-o Acquire::ForceIPv4=true"
+if [[ "${INSECURE_APT:-0}" == "1" ]]; then
+    warn "INSECURE_APT=1 → Verificación TLS de APT deshabilitada (no recomendado)"
+    APT_OPTS+=" -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false"
+fi
 
 # ─── Usuario real (funciona con o sin sudo) ───────────────────────────────────
 REAL_USER="${SUDO_USER:-$USER}"
@@ -47,7 +50,7 @@ fi
 # ─── Variables configurables ──────────────────────────────────────────────────
 REPO_URL="${REPO_URL:-https://github.com/Menderin/Monitoreo-de-Sensores---Implementacion-ROS}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-$REAL_HOME/Microalgas-Monitoring}"
+INSTALL_DIR="${INSTALL_DIR:-$REAL_HOME/IoT-Gateway}"
 ROS_DISTRO="jazzy"
 MICROROS_WS="$REAL_HOME/microros_ws"
 ESP_IDF_VERSION="${ESP_IDF_VERSION:-v5.4.1}"
@@ -67,7 +70,7 @@ fi
 # ==============================================================================
 # 1. Verificar Ubuntu 24.04
 # ==============================================================================
-header "1/7  Verificando sistema operativo"
+header "1/8  Verificando sistema operativo"
 
 [[ -f /etc/os-release ]] || error "No se puede determinar el sistema operativo."
 source /etc/os-release
@@ -84,14 +87,28 @@ success "Ubuntu $VERSION_ID detectado."
 # ==============================================================================
 # 2. Instalar ROS 2 Jazzy
 # ==============================================================================
-header "2/7  Instalando ROS 2 Jazzy"
+header "2/8  Instalando ROS 2 Jazzy"
 
 if [[ -f /opt/ros/jazzy/setup.bash ]]; then
     success "ROS 2 Jazzy ya está instalado."
 else
     info "Configurando repositorio de ROS 2..."
 
-    sudo apt-get $APT_OPTS update -qq
+    if ! sudo apt-get $APT_OPTS update -qq 2>&1; then
+        echo ""
+        error_msg="apt update falló. Posibles causas:"
+        error_msg+="\n  1. Sin conexión a Internet."
+        error_msg+="\n  2. Un proxy/router está interceptando el tráfico HTTPS (MITM)."
+        error_msg+="\n  3. Los certificados del sistema están desactualizados."
+        error_msg+="\n"
+        error_msg+="\n  Si estás en una red universitaria/corporativa con inspección de tráfico,"
+        error_msg+="\n  puedes forzar la instalación bajo tu responsabilidad con:"
+        error_msg+="\n"
+        error_msg+="\n    INSECURE_APT=1 sudo -E ./install.sh"
+        error_msg+="\n"
+        error_msg+="\n  ⚠️  Esto desactiva la verificación TLS de APT (NO recomendado)."
+        error "$error_msg"
+    fi
     sudo apt-get $APT_OPTS install -y --no-install-recommends \
         software-properties-common curl gnupg lsb-release
 
@@ -146,7 +163,7 @@ set +u; source /opt/ros/jazzy/setup.bash; set -u
 # ==============================================================================
 # 3. Instalar micro-ROS Agent (compilar desde fuente con colcon)
 # ==============================================================================
-header "3/7  Instalando micro-ROS Agent"
+header "3/8  Instalando micro-ROS Agent"
 
 # Verificar si ya existe y funciona
 if [[ -f "$MICROROS_WS/install/setup.bash" ]]; then
@@ -225,9 +242,9 @@ fi
 # ==============================================================================
 # 4. Instalar ESP-IDF
 # ==============================================================================
-header "4/7  Instalando ESP-IDF ($ESP_IDF_VERSION)"
+header "4/8  Instalando ESP-IDF ($ESP_IDF_VERSION)"
 
-_idf_py_env=$(ls -d $HOME/.espressif/python_env/idf*/bin/python3 2>/dev/null | head -1 || true)
+_idf_py_env=$(ls -d "$REAL_HOME/.espressif/python_env"/idf*/bin/python3 2>/dev/null | head -1 || true)
 if [[ -f "$ESP_IDF_DIR/export.sh" && -n "$_idf_py_env" ]]; then
     success "ESP-IDF ya instalado en $ESP_IDF_DIR"
 else
@@ -272,7 +289,7 @@ fi
 # ==============================================================================
 # 5. Instalar dependencias Python
 # ==============================================================================
-header "5/7  Instalando dependencias Python"
+header "5/8  Instalando dependencias Python"
 
 # Usar pip con --break-system-packages (Ubuntu 24.04 PEP 668)
 PIP_FLAGS="--break-system-packages --quiet"
@@ -293,7 +310,7 @@ python3 -c "import pymongo; import dotenv; import certifi; import numpy; import 
 # ==============================================================================
 # 6. Clonar / verificar repositorio
 # ==============================================================================
-header "6/7  Preparando repositorio"
+header "6/8  Preparando repositorio"
 
 # Detectar si ya estamos dentro del proyecto
 if [[ -f "$(pwd)/database/ros_sensor_node.py" && -d "$(pwd)/.git" ]]; then
@@ -316,7 +333,7 @@ cd "$INSTALL_DIR"
 # ==============================================================================
 # 7. Configurar credenciales MongoDB
 # ==============================================================================
-header "7/7  Configuración de credenciales"
+header "7/8  Configuración de credenciales"
 
 if [[ -f "database/.env" ]]; then
     success "database/.env ya existe."
@@ -353,13 +370,15 @@ fi
 # Resumen final
 # ==============================================================================
 # ==============================================================================
-# 7/7  Inyectar sources en ~/.bashrc  (anti-duplicado)
+# 8/8  Configurar entorno, permisos y accesos directos
 # ==============================================================================
-header "7/7  Configurando ~/.bashrc"
+header "8/8  Configurando entorno del sistema"
 
+# ── 8a. Inyectar sources en ~/.bashrc (anti-duplicado) ─────────────────────────
 _bashrc="$REAL_HOME/.bashrc"
 _ros_source="source /opt/ros/jazzy/setup.bash"
 _uros_source="source $MICROROS_WS/install/setup.bash"
+_dds_export="export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST"
 
 info "Verificando entradas en $_bashrc ..."
 
@@ -380,11 +399,58 @@ else
     info "  Ya presente: $_uros_source"
 fi
 
+# Aislamiento DDS: fuerza ROS 2 a usar solo loopback (sin bucles multi-interfaz)
+if ! grep -qF "ROS_AUTOMATIC_DISCOVERY_RANGE" "$_bashrc" 2>/dev/null; then
+    echo "# ── Aislamiento DDS (solo loopback) ────────────" >> "$_bashrc"
+    echo "$_dds_export"                                       >> "$_bashrc"
+    success "  Añadido: $_dds_export"
+else
+    info "  Ya presente: ROS_AUTOMATIC_DISCOVERY_RANGE"
+fi
+
 # Asegurar que el .bashrc pertenece al usuario real (no a root)
 chown "$REAL_USER:$REAL_USER" "$_bashrc" 2>/dev/null || true
 
 echo ""
 success "~/.bashrc actualizado. Abre una terminal nueva o ejecuta: source ~/.bashrc"
+
+# ── 8b. Reemplazar {{USER_HOME}} en scripts de arranque ───────────────────────
+info "Inyectando ruta HOME ($REAL_HOME) en scripts de arranque..."
+for _script in "$INSTALL_DIR/scripts/start_agent.sh" \
+               "$INSTALL_DIR/scripts/start_bridge.sh"; do
+    if [[ -f "$_script" ]] && grep -q '{{USER_HOME}}' "$_script"; then
+        sed -i "s|{{USER_HOME}}|$REAL_HOME|g" "$_script"
+        success "  Reemplazado {{USER_HOME}} → $REAL_HOME en $(basename "$_script")"
+    fi
+done
+
+# También reemplazar en templates de servicios systemd
+for _tpl in "$INSTALL_DIR/services/"*.tpl; do
+    if [[ -f "$_tpl" ]] && grep -q '{{USER_HOME}}' "$_tpl"; then
+        sed -i "s|{{USER_HOME}}|$REAL_HOME|g" "$_tpl"
+        success "  Reemplazado {{USER_HOME}} → $REAL_HOME en $(basename "$_tpl")"
+    fi
+done
+
+# ── 8c. Permisos de ejecución en scripts ──────────────────────────────────────
+info "Asignando permisos de ejecución a scripts..."
+chmod +x "$INSTALL_DIR/scripts/"*.sh 2>/dev/null || true
+chmod +x "$INSTALL_DIR/menu.sh" 2>/dev/null || true
+success "  Permisos +x asignados."
+
+# ── 8d. Enlace simbólico para el comando 'status' ─────────────────────────────
+info "Creando enlace simbólico: status → $INSTALL_DIR/scripts/status.sh"
+sudo ln -sf "$INSTALL_DIR/scripts/status.sh" /usr/local/bin/status
+success "  Ahora puedes ejecutar 'status' desde cualquier directorio."
+
+# ── 8e. Instalar iptables-persistent y netfilter-persistent (dependencia del firewall) ─
+if ! dpkg -l iptables-persistent &>/dev/null 2>&1 || ! dpkg -l netfilter-persistent &>/dev/null 2>&1; then
+    info "Instalando iptables-persistent y netfilter-persistent para persistencia del firewall..."
+    sudo DEBIAN_FRONTEND=noninteractive apt-get $APT_OPTS install -y iptables-persistent netfilter-persistent -qq
+    success "  iptables-persistent y netfilter-persistent instalados."
+else
+    info "  iptables-persistent y netfilter-persistent ya instalados."
+fi
 
 echo ""
 success "══════════════════════════════════════════════"

@@ -2,8 +2,11 @@
 # ==============================================================================
 # start_bridge.sh — Gateway Monitoring System
 # Lanza el Bridge ROS 2 → MongoDB (modo daemon / systemd)
-# Usa rutas dinámicas: compatible con cualquier usuario Linux.
+# La variable {{USER_HOME}} es reemplazada por install.sh con la ruta real.
 # ==============================================================================
+
+# ── Aislamiento DDS: solo loopback (evita bucles en interfaces múltiples) ────
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
 
 MICROROS_WS="${MICROROS_WS:-$HOME/microros_ws}"
 

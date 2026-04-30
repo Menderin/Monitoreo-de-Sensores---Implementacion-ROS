@@ -12,11 +12,15 @@ Uso:
     python3 ros_sensor_node.py
 """
 
+import os
 import sys
 from pathlib import Path
 
 # Agregar el directorio padre al path para importar database
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# ── Aislamiento DDS: solo loopback (evita bucles en interfaces múltiples) ────
+os.environ.setdefault('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST')
 
 import rclpy
 from rclpy.node import Node
@@ -47,6 +51,14 @@ class SensorDBNode(Node):
         self._db_available = False
         
         # ═══════════════════════════════════════════════════════════
+        # WATCHDOG — Auto-recuperación por inactividad prolongada
+        # ═══════════════════════════════════════════════════════════
+        # Si ningún dispositivo envía datos frescos durante este tiempo,
+        # el nodo se detiene con sys.exit(1) para que systemd lo reinicie.
+        self.WATCHDOG_TIMEOUT = 600.0  # 10 minutos en segundos
+        self._last_fresh_data_time = None  # Se inicializa con el primer dato
+        
+        # ═══════════════════════════════════════════════════════════
         # CONEXIÓN A BASE DE DATOS (con reintentos)
         # ═══════════════════════════════════════════════════════════
         self._conectar_mongodb()
@@ -71,6 +83,7 @@ class SensorDBNode(Node):
         self.get_logger().info("Nodo iniciado - Esperando datos...")
         self.get_logger().info(f"   Suscrito a: /sensor_data (Float32MultiArray)")
         self.get_logger().info(f"   Intervalo de guardado: {self.INTERVALO_GUARDADO}s")
+        self.get_logger().info(f"   Watchdog timeout: {self.WATCHDOG_TIMEOUT:.0f}s ({self.WATCHDOG_TIMEOUT/60:.0f} min)")
     
     def _conectar_mongodb(self, reintentos=3):
         """Intenta conectar a MongoDB con reintentos automáticos."""
@@ -150,6 +163,9 @@ class SensorDBNode(Node):
                 self.get_logger().debug(
                     f"[{mac_str}] T={temp:.1f}°C | pH={ph:.2f}"
                 )
+                
+                # Actualizar timestamp del Watchdog (dato fresco recibido)
+                self._last_fresh_data_time = self.get_clock().now().nanoseconds / 1e9
             else:
                 self.get_logger().warn(f"Array incompleto: {len(msg.data)} elementos (esperado: 5)")
                 
@@ -193,6 +209,17 @@ class SensorDBNode(Node):
                 self.get_logger().warn(
                     f"Dispositivo {mac} sin datos frescos ({edad_datos:.0f}s)"
                 )
+        
+        # ═══ WATCHDOG: verificar inactividad prolongada ═════════════════════
+        if self._last_fresh_data_time is not None:
+            tiempo_sin_datos = current_time - self._last_fresh_data_time
+            if tiempo_sin_datos > self.WATCHDOG_TIMEOUT:
+                self.get_logger().fatal(
+                    f"Watchdog timeout: sin datos frescos por {tiempo_sin_datos:.0f}s "
+                    f"(umbral: {self.WATCHDOG_TIMEOUT:.0f}s). "
+                    f"Reiniciando nodo por falta de datos..."
+                )
+                sys.exit(1)
     
     def destroy_node(self):
         """Limpieza al cerrar el nodo."""

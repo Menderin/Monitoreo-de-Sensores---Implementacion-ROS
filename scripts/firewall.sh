@@ -14,6 +14,16 @@
 
 # ── Auto-detección de interfaces (sobreescribible por entorno) ────────────────
 # Si ya fueron exportadas externamente, se respetan.
+
+# ── Ruta del repositorio y lectura de AGENT_PORT desde .env WiFi ──────────────
+REPO_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+WIFI_ENV="$REPO_DIR/microros-esp/main/versions/wifi/.env"
+AGENT_PORT=8888
+if [[ -f "$WIFI_ENV" ]]; then
+    _p=$(grep "^AGENT_PORT=" "$WIFI_ENV" | cut -d'=' -f2 | tr -d '[:space:]' || true)
+    [[ -n "$_p" ]] && AGENT_PORT="$_p"
+fi
+
 if [[ -z "${IF_WAN:-}" ]]; then
     # Primera interfaz Ethernet activa (empieza con 'e': eth0, enp3s0, etc.)
     IF_WAN=$(ip -o link show up | awk -F': ' '$2~/^e/{print $2; exit}')
@@ -32,6 +42,7 @@ echo "  INTERFACES DETECTADAS"
 echo "======================================================"
 echo "  IF_WAN (Internet/Lab) : $IF_WAN"
 echo "  IF_LAN (Sensores WiFi): $IF_LAN"
+echo "  AGENT_PORT (micro-ROS) : $AGENT_PORT"
 echo "======================================================"
 echo ""
 read -rp "¿Las interfaces son correctas? [S/n]: " _confirm_if
@@ -64,11 +75,16 @@ sudo iptables -P FORWARD DROP   # Robots NO tienen acceso a Internet
 sudo iptables -P OUTPUT ACCEPT
 
 # --- 3. Reglas del sistema (Raspberry Pi) ---
-# Loopback: crítico para ROS 2 (DDS usa localhost)
+# --------------------------------------------------
+# REGLAS BASE DEL SISTEMA (CRITICO PARA ROS 2)
+# --------------------------------------------------
+# Permitir todo el trafico interno (loopback) para CycloneDDS
 sudo iptables -A INPUT -i lo -j ACCEPT
+sudo iptables -A OUTPUT -o lo -j ACCEPT
 
-# Stateful inspection: solo respuestas a conexiones iniciadas por la Pi
-sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+# Permitir respuestas de conexiones salientes ya establecidas
+sudo iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # SSH desde la LAN cableada (administración)
 sudo iptables -A INPUT -i "$IF_WAN" -p tcp --dport 22 -j ACCEPT
@@ -81,8 +97,9 @@ sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 67:68 --sport 67:68 -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 53 -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p tcp --dport 53 -j ACCEPT
 
-# micro-ROS UDP: el Agent escucha en UDP 8888; solo permite ese puerto
-sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport 8888 -j ACCEPT
+# micro-ROS UDP: el Agent escucha en UDP $AGENT_PORT (leído desde .env)
+echo "[*] Abriendo puerto UDP $AGENT_PORT para micro-ROS Agent..."
+sudo iptables -A INPUT -i "$IF_LAN" -p udp --dport "$AGENT_PORT" -j ACCEPT
 
 # Ping desde sensores: diagnóstico básico
 sudo iptables -A INPUT -i "$IF_LAN" -p icmp -j ACCEPT
@@ -91,15 +108,16 @@ sudo iptables -A INPUT -i "$IF_LAN" -p icmp -j ACCEPT
 sudo iptables -A INPUT -i "$IF_LAN" -p tcp --dport 22 -j DROP
 
 # --- 5. Guardar reglas (persistencia) ---
-if ! dpkg -l iptables-persistent &>/dev/null 2>&1; then
-    echo "[*] Instalando iptables-persistent para guardar reglas..."
+if ! dpkg -l iptables-persistent &>/dev/null 2>&1 || ! dpkg -l netfilter-persistent &>/dev/null 2>&1; then
+    echo "[*] Instalando iptables-persistent y netfilter-persistent para guardar reglas..."
     # DEBIAN_FRONTEND=noninteractive evita el diálogo interactivo de instalación
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent -qq
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent netfilter-persistent -qq
 fi
 
 echo "[*] Guardando reglas permanentemente con netfilter-persistent..."
 sudo netfilter-persistent save
-echo "[*] Reglas guardadas. Sobrevivirán al próximo reinicio."
+sudo systemctl enable netfilter-persistent 2>/dev/null || true
+echo "[*] Reglas guardadas y servicio habilitado. Sobrevivirán al próximo reinicio."
 
 # --- Resultado ---
 echo "==================================================="
