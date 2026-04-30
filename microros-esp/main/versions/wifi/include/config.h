@@ -48,10 +48,11 @@
 //#define PH_SLOPE       0.003622                              
 //#define PH_INTERCEPT   0.683614 
 
-// pH: calibrado 2026-03-13                                 
-// Buffers: pH 4.00→756mV, pH 6.86→1504mV, pH 9.18→2127mV    
-#define PH_SLOPE       0.003780                              
-#define PH_INTERCEPT   1.152729   
+  
+// pH: calibrado 2026-04-27                                 
+// Buffers: pH 4.01→957mV, pH 6.86→1751mV, pH 9.18→2347mV    
+#define PH_SLOPE       0.003712                              
+#define PH_INTERCEPT   0.427906                              
 
 
 // ========================================

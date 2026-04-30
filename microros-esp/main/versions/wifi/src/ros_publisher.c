@@ -236,6 +236,15 @@ static bool ros_entities_create(void)
         return false;
     }
 
+    // ── Extender timeout de creación de entidades XRCE-DDS ────────
+    // Por defecto el cliente espera ~1.5 s la confirmación del agente.
+    // Con 3 ESP32 publicando simultáneamente el agente tarda ~2 s en
+    // crear el DataWriter → la ESP32 expira y descarta la sesión.
+    // 10 s da margen para cargas altas sin afectar la operación normal.
+    rmw_uros_set_context_entity_creation_session_timeout(
+        rcl_context_get_rmw_context(&support.context), 10000);
+    ESP_LOGI(TAG, "[Resilience] Timeout XRCE-DDS extendido a 10000 ms");
+
     // ── Nodo ───────────────────────────────────────────────────────
     if (mac_address[0] == 0) {
         esp_read_mac(mac_address, ESP_MAC_WIFI_STA);
@@ -380,14 +389,32 @@ bool ros_publisher_init(void)
     ESP_LOGI(TAG, "  CONECTADO A MICRO-ROS AGENT!");
     ESP_LOGI(TAG, "========================================");
     
-    // Optimización AGRESIVA: Liberar máxima memoria WiFi
-    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);  // Power save mínimo
-    vTaskDelay(pdMS_TO_TICKS(500));  // Delay mayor para estabilizar
+    // Deshabilitar ahorro de energía WiFi completamente.
+    // WIFI_PS_MIN_MODEM introduce latencia variable en UDP que rompe el
+    // timeout del handshake XRCE-DDS al crear el DataWriter del publisher.
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Esperar estabilización de canal WiFi
     
-    // Crear entidades ROS usando la ruta resiliente (con cleanup en fallo).
-    if (!ros_entities_create()) {
-        ESP_LOGE(TAG, "Fallo al crear entidades ROS en init");
-        return false;
+    // Crear entidades ROS con reintentos internos.
+    // El primer intento normalmente falla porque el agente mantiene una
+    // sesión stale del boot anterior (mismo client_key derivado de MAC).
+    // El destroy() limpia esa sesión; el segundo intento conecta limpio.
+    #define MAX_ENTITY_CREATE_ATTEMPTS 3
+    for (int attempt = 1; attempt <= MAX_ENTITY_CREATE_ATTEMPTS; attempt++) {
+        if (ros_entities_create()) {
+            ESP_LOGI(TAG, "[Boot] Entidades ROS creadas (intento %d/%d)",
+                     attempt, MAX_ENTITY_CREATE_ATTEMPTS);
+            break;
+        }
+        ESP_LOGW(TAG, "[Boot] Fallo al crear entidades (intento %d/%d).",
+                 attempt, MAX_ENTITY_CREATE_ATTEMPTS);
+        if (attempt == MAX_ENTITY_CREATE_ATTEMPTS) {
+            ESP_LOGE(TAG, "[Boot] Agotados %d intentos de crear entidades.",
+                     MAX_ENTITY_CREATE_ATTEMPTS);
+            return false;
+        }
+        // Pausa corta para que el agente limpie la sesión stale
+        vTaskDelay(pdMS_TO_TICKS(ROS_AGENT_REINIT_DELAY_MS));
     }
     
     ESP_LOGI(TAG, "========================================");
