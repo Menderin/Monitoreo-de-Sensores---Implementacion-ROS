@@ -1,0 +1,20 @@
+[Unit]
+Description=Gateway Monitoring System — Telegram Alert Daemon
+After=network-online.target smart-bridge.service
+Wants=network-online.target smart-bridge.service
+
+[Service]
+Type=simple
+User=microalgas
+WorkingDirectory=/home/microalgas/Monitoreo-de-Sensores---Implementacion-ROS/database
+Environment=HOME=/home/microalgas
+Environment=PYTHONUNBUFFERED=1
+# Usando el entorno virtual de ESP-IDF
+ExecStart=/home/microalgas/.espressif/python_env/idf5.4_py3.12_env/bin/python -u /home/microalgas/Monitoreo-de-Sensores---Implementacion-ROS/scripts/telegram/smart_alerter.py
+# Política de resiliencia 
+Restart=always
+RestartSec=15
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=multi-user.target

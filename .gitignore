@@ -151,3 +151,4 @@ mongo-data/
 dump/
 
 
+scripts/telegram/*.json

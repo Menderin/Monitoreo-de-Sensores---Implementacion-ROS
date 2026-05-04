@@ -11,9 +11,6 @@ from datetime import datetime, timedelta, timezone
 # 1. CONFIGURACIÓN DE ENTORNO (con manejo robusto de errores)
 # ==========================================
 
-# Sleep inicial: da tiempo a que la red esté completamente operativa
-# Esto evita que el script crashee al inicio cuando systemd lo arranca
-# antes de que NetworkManager tenga conectividad plena.
 STARTUP_DELAY = int(os.getenv("ALERTER_STARTUP_DELAY", "15"))
 print(f"[INFO] Esperando {STARTUP_DELAY}s para estabilización de red...")
 time.sleep(STARTUP_DELAY)
@@ -26,11 +23,9 @@ except ImportError as e:
     print("[FATAL] Instala con: pip3 install pymongo python-dotenv --break-system-packages")
     sys.exit(1)
 
-# Ruta dinámica al .env (scripts/telegram/ → repo_root/database/.env)
 env_path = Path(__file__).resolve().parents[2] / 'database' / '.env'
 if not env_path.exists():
     print(f"[FATAL] .env no encontrado: {env_path}")
-    print("[FATAL] Crea database/.env con las credenciales necesarias.")
     sys.exit(1)
 
 load_dotenv(dotenv_path=env_path)
@@ -42,7 +37,6 @@ MONGO_COL_DEVICES = os.getenv("MONGO_COLLECTION_DISPOSITIVOS")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Validar variables críticas antes de continuar
 _missing = []
 if not MONGO_URI:
     _missing.append("MONGO_URI")
@@ -68,7 +62,6 @@ col_sensors = None
 for attempt in range(1, MAX_RETRIES + 1):
     try:
         client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
-        # Forzar conexión real para verificar conectividad
         client.admin.command('ping')
         db = client[MONGO_DB_NAME]
         col_devices = db[MONGO_COL_DEVICES] if MONGO_COL_DEVICES else None
@@ -82,7 +75,6 @@ for attempt in range(1, MAX_RETRIES + 1):
             sys.exit(1)
         time.sleep(10)
 
-# Memoria persistente para no spamear alertas repetidas (sobrevive reinicios)
 ESTADO_ALERTAS_FILE = str(Path(__file__).resolve().parent / 'alerter_estado.json')
 
 def _cargar_estado_alertas():
@@ -117,6 +109,37 @@ def enviar_telegram(mensaje):
         print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
         return False
 
+def adaptar_dispositivo(dev):
+    """
+    Adapter Pattern: Estandariza la estructura del documento de MongoDB.
+    Convierte arquitecturas planas (Tachi) a la arquitectura anidada original,
+    garantizando retrocompatibilidad con otras implementaciones.
+    """
+    umbrales_raw = dev.get('umbrales', {})
+    unidades_raw = dev.get('unidades', {})
+    umbrales_norm = {}
+
+    for k, v in umbrales_raw.items():
+        if isinstance(v, dict):
+            umbrales_norm[k] = v.copy()
+
+    for k, v in umbrales_raw.items():
+        if not isinstance(v, dict):
+            if k.endswith('_max'):
+                sensor = k[:-4]
+                umbrales_norm.setdefault(sensor, {})['critical_max'] = v
+            elif k.endswith('_min'):
+                sensor = k[:-4]
+                umbrales_norm.setdefault(sensor, {})['critical_min'] = v
+
+    for sensor_k, umbral_dict in umbrales_norm.items():
+        sensor_esp = "temperatura" if sensor_k == "temperature" else sensor_k
+        if 'unit' not in umbral_dict and sensor_esp in unidades_raw:
+            umbral_dict['unit'] = unidades_raw.get(sensor_esp, '')
+
+    dev['umbrales'] = umbrales_norm
+    return dev
+
 def check_alerts():
     global out_of_bounds_counter, last_processed_ts
     if col_devices is None or col_sensors is None:
@@ -126,13 +149,14 @@ def check_alerts():
     dispositivos = col_devices.find()
 
     for dev in dispositivos:
+        dev = adaptar_dispositivo(dev)
+
         dev_id = dev['_id']
         alias = dev.get('alias', dev_id)
         umbrales = dev.get('umbrales', {})
         sensores_hab = dev.get('configuracion', {}).get('sensores_habilitados', [])
 
         for sensor in sensores_hab:
-            # Buscar umbrales en inglés, buscar datos en español
             sensor_key = "temperature" if sensor == "temperatura" else sensor
             umbral = umbrales.get(sensor_key, {})
 
@@ -147,12 +171,10 @@ def check_alerts():
             if clave_memoria not in out_of_bounds_counter:
                 out_of_bounds_counter[clave_memoria] = 0
 
-            # Obtener lecturas nuevas
             query = {"dispositivo_id": dev_id}
             if clave_memoria in last_processed_ts:
                 query["timestamp"] = {"$gt": last_processed_ts[clave_memoria]}
             else:
-                # Si nunca se procesó, empezar desde hace 2 mins para no procesar toda la historia
                 ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 query["timestamp"] = {"$gte": ahora_utc - timedelta(minutes=2)}
 
@@ -170,11 +192,9 @@ def check_alerts():
 
                 if val < min_val or val > max_val:
                     out_of_bounds_counter[clave_memoria] += 1
-                    
+
                     if out_of_bounds_counter[clave_memoria] >= 15:
                         estado_actual = "alta" if val > max_val else "baja"
-                        # Alertar solo si acaba de salir de normal o si necesitamos reenviar (cooldown cumplido pero sin reingreso)
-                        # Aquí, si mantenemos estado persistente, no mandamos SPAM, sólo 1 vez hasta volver a la normalidad
                         if estado_anterior == "normal":
                             msg = f"🚨 *ALERTA CRÍTICA* 🚨\n"
                             msg += f"📡 Dispositivo: *{alias}*\n"
@@ -184,11 +204,9 @@ def check_alerts():
                             if enviar_telegram(msg):
                                 estado_alertas[clave_memoria] = estado_actual
                                 _guardar_estado_alertas(estado_alertas)
-                        # Cooldown: reiniciamos contador aunque siga fuera de rango
                         out_of_bounds_counter[clave_memoria] = 0
 
                 else:
-                    # Se normalizó el valor o fue un pico esporádico
                     out_of_bounds_counter[clave_memoria] = 0
                     if estado_anterior != "normal":
                         msg = f"✅ *SITUACIÓN NORMALIZADA* ✅\n"
@@ -212,4 +230,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[ERROR] Error en el ciclo de alertas: {e}")
             time.sleep(10)
-        time.sleep(10)  # Revisión cada 10 segundos para procesar rápido las nuevas lecturas
+        time.sleep(10)
