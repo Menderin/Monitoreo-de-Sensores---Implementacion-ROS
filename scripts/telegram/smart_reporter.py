@@ -13,19 +13,9 @@ try:
     import pandas as pd
 except ImportError as e:
     print(f"[FATAL] Dependencia Python faltante: {e}")
-    print("[FATAL] Instala con: pip3 install pymongo python-dotenv pandas --break-system-packages")
     sys.exit(1)
 
-# ==========================================
-# 1. CONFIGURACIÓN DE ENTORNO
-# ==========================================
-# Ruta dinámica al .env (scripts/telegram/ → repo_root/database/.env)
 env_path = Path(__file__).resolve().parents[2] / 'database' / '.env'
-if not env_path.exists():
-    print(f"[FATAL] .env no encontrado: {env_path}")
-    print("[FATAL] Crea database/.env con las credenciales necesarias.")
-    sys.exit(1)
-
 load_dotenv(dotenv_path=env_path)
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -36,260 +26,67 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 ESTADO_FILE = str(Path(__file__).resolve().parent / 'reporte_estado.json')
 
-# Validar variables críticas antes de continuar
-_missing = []
-if not MONGO_URI:
-    _missing.append("MONGO_URI")
-if not MONGO_DB_NAME:
-    _missing.append("MONGO_DB")
-if not TOKEN:
-    _missing.append("TELEGRAM_BOT_TOKEN")
-if not CHAT_ID:
-    _missing.append("TELEGRAM_CHAT_ID")
-if _missing:
-    print(f"[FATAL] Variables de entorno faltantes en {env_path}: {', '.join(_missing)}")
-    sys.exit(1)
-
-# ==========================================
-# 2. FUNCIONES DE MEMORIA (Antispam)
-# ==========================================
-def cargar_estado():
-    if os.path.exists(ESTADO_FILE):
-        with open(ESTADO_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def guardar_estado(estado):
-    with open(ESTADO_FILE, 'w') as f:
-        json.dump(estado, f)
-
 def enviar_telegram(mensaje):
-    """Envía mensaje a Telegram. Retorna True si fue exitoso, False si falló."""
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensaje, "parse_mode": "Markdown"}
     try:
-        respuesta = requests.post(url, json=payload, timeout=15)
-        respuesta.raise_for_status()
+        requests.post(url, json=payload, timeout=15).raise_for_status()
         return True
-    except requests.exceptions.RequestException as e:
-        print(f"[WARN] No se pudo enviar mensaje de Telegram: {e}")
-        return False
+    except: return False
 
-# ==========================================
-# 3. LÓGICA DE TURNOS (Dinámica para Cronjob)
-# ==========================================
-def obtener_ventana_tiempo():
+def adaptar_dispositivo(dev):
+    umbrales_raw = dev.get('umbrales', {})
+    unidades_raw = dev.get('unidades', {})
+    umbrales_norm = {}
+    for k, v in umbrales_raw.items():
+        if isinstance(v, dict): umbrales_norm[k] = v.copy()
+        else:
+            if k.endswith('_max'): umbrales_norm.setdefault(k[:-4], {})['critical_max'] = v
+            elif k.endswith('_min'): umbrales_norm.setdefault(k[:-4], {})['critical_min'] = v
+    for sk, ud in umbrales_norm.items():
+        esp = "temperatura" if sk == "temperature" else sk
+        if 'unit' not in ud: ud['unit'] = unidades_raw.get(esp, '')
+    dev['umbrales'] = umbrales_norm
+    return dev
+
+def generar_reporte():
     ahora = datetime.now()
-    
-    # Delegamos el horario exacto al Cronjob. Solo miramos ~12h hacia atrás.
     fin_local = ahora.replace(minute=0, second=0, microsecond=0)
     inicio_local = fin_local - timedelta(hours=12)
+    tipo = "🌅 Reporte de Mañana" if ahora.hour < 14 else "🌃 Reporte de Tarde"
     
-    if ahora.hour < 14:
-        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_manana_{ahora.hour}h"
-        tipo = "🌅 Reporte de Mañana"
-    else:
-        id_reporte = f"{ahora.strftime('%Y-%m-%d')}_tarde_{ahora.hour}h"
-        tipo = "🌃 Reporte de Tarde"
-
-    fin_utc = fin_local.astimezone(timezone.utc).replace(tzinfo=None)
-    inicio_utc = inicio_local.astimezone(timezone.utc).replace(tzinfo=None)
-    
-    return id_reporte, inicio_utc, fin_utc, tipo, inicio_local, fin_local
-
-# ==========================================
-# 4. GENERACIÓN DEL REPORTE FINAL
-# ==========================================
-def generar_reporte():
-    id_reporte, inicio_utc, fin_utc, tipo_reporte, inicio_local, fin_local = obtener_ventana_tiempo()
-    print(f"[DEBUG] Iniciando generación de {tipo_reporte} (ID: {id_reporte})")
-    print(f"[DEBUG] Ventana de extracción (Local): {inicio_local} -> {fin_local}")
-    print(f"[DEBUG] Ventana de extracción (UTC): {inicio_utc} -> {fin_utc}")
-    
-    estado = cargar_estado()
-    
-    if estado.get(id_reporte) == True:
-        print(f"[DEBUG] El reporte '{id_reporte}' ya fue enviado en esta hora. Abortando para evitar SPAM.")
-        return
-
-    # Conexión con reintentos (alineado con smart_alerter.py)
-    MAX_RETRIES = 3
-    client = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
-            client.admin.command('ping')
-            print(f"[OK] Conectado a MongoDB (intento {attempt}/{MAX_RETRIES})")
-            break
-        except Exception as e:
-            print(f"[WARN] MongoDB no disponible (intento {attempt}/{MAX_RETRIES}): {e}")
-            if attempt == MAX_RETRIES:
-                print("[ERROR] No se pudo conectar a MongoDB. Reporte no generado.")
-                return
-            time.sleep(5)
-
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
     db = client[MONGO_DB_NAME]
     col_devices = db[MONGO_COL_DEVICES]
     col_sensors = db[MONGO_COL_SENSORS]
 
-    mensaje = f"📊 *{tipo_reporte}*\n"
-    mensaje += f"📅 Periodo: {inicio_local.strftime('%H:%M')} a {fin_local.strftime('%H:%M')} hrs\n\n"
-    
+    mensaje = f"📊 *{tipo}*\n📅 Periodo: {inicio_local.strftime('%H:%M')} a {fin_local.strftime('%H:%M')} hrs\n\n"
     dispositivos = col_devices.find()
-    datos_encontrados = False
-    
+    hay_datos = False
+
     for dev in dispositivos:
+        dev = adaptar_dispositivo(dev)
         dev_id = dev['_id']
-        alias = dev.get('alias', dev_id)
-        sensores_hab = dev.get('configuracion', {}).get('sensores_habilitados', [])
-        print(f"[DEBUG] Extrayendo datos para dispositivo: {alias} ({dev_id})...")
+        alias = dev.get('nombre', dev.get('alias', dev_id))
         
-        query = {
-            "dispositivo_id": dev_id,
-            "timestamp": {"$gte": inicio_utc, "$lte": fin_utc}
-        }
+        query = {"dispositivo_id": dev_id, "timestamp": {"$gte": inicio_local.astimezone(timezone.utc).replace(tzinfo=None), "$lte": fin_local.astimezone(timezone.utc).replace(tzinfo=None)}}
         lecturas = list(col_sensors.find(query))
-        print(f"[DEBUG] Filas encontradas: {len(lecturas)}")
         
-        if not lecturas:
-            continue
-            
-        datos_encontrados = True
-        mensaje += f"🔹 *Dispositivo: {alias}*\n"
-        mensaje += f"  └ 📈 Total de lecturas: {len(lecturas)}\n"
+        if not lecturas: continue
+        hay_datos = True
+        mensaje += f"🔹 *Dispositivo: {alias}*\n  └ 📈 Lecturas: {len(lecturas)}\n```text\nVar     Med   Pro   Min   Max\n" + "-"*29 + "\n"
+        df = pd.DataFrame([doc['datos'] for doc in lecturas if 'datos' in doc])
         
-        lista_datos = [doc['datos'] for doc in lecturas if 'datos' in doc]
-        df = pd.DataFrame(lista_datos)
-        
-        # 🟢 INICIO DE LA TABLA COPIABLE (Modo Ultra-Compacto)
-        mensaje += "```text\n"
-        mensaje += "Var     Med   Pro   Min   Max\n"
-        mensaje += "-"*29 + "\n"
-        
-        for sensor in sensores_hab:
-            if sensor in df.columns and not df[sensor].isnull().all():
-                s_min = df[sensor].min()
-                s_max = df[sensor].max()
-                s_prom = df[sensor].mean()
-                s_med = df[sensor].median()
-                
-                # Abreviaturas extremas para no romper la pantalla
-                if sensor == "temperatura":
-                    var_nombre = "T(°C)"
-                elif sensor == "ph":
-                    var_nombre = "pH"
-                else:
-                    var_nombre = sensor[:4].capitalize()
-                
-                # Formato exprimido al milímetro (29 caracteres por línea)
-                mensaje += f"{var_nombre:<5} {s_med:>5.2f} {s_prom:>5.2f} {s_min:>5.2f} {s_max:>5.2f}\n"
-                
+        for sensor in dev.get('configuracion', {}).get('sensores_habilitados', []):
+            if sensor in df.columns:
+                v_nom = "T(°C)" if sensor == "temperatura" else "pH"
+                mensaje += f"{v_nom:<5} {df[sensor].median():>5.2f} {df[sensor].mean():>5.2f} {df[sensor].min():>5.2f} {df[sensor].max():>5.2f}\n"
         mensaje += "```\n\n"
-        # 🔴 FIN DE LA TABLA
-        
-    print(f"[DEBUG] Terminada la evaluación de dispositivos. datos_encontrados={datos_encontrados}")
-    if not datos_encontrados:
-        print("[DEBUG] No hay datos para hoy en la ventana de tiempo indicada.")
-        mensaje += "⚠️ No se registraron datos en este periodo.\n"
-        
-    print("[DEBUG] Intentando enviar reporte final a Telegram...")
-    if enviar_telegram(mensaje):
-        print(f"[DEBUG] Reporte '{id_reporte}' enviado y marcado en memoria antispam.")
-        estado[id_reporte] = True
-        guardar_estado(estado)
-    else:
-        print(f"[ERROR] Reporte '{id_reporte}' falló al enviarse.")
 
-def run_watchdog():
-    status_file = Path(__file__).resolve().parent / '.watchdog_status'
-    ahora_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-
-    def trigger_error(msg_text):
-        if not status_file.exists():
-            msg = f"🚨 *WATCHDOG ALERTA* 🚨\n{msg_text}"
-            if enviar_telegram(msg):
-                with open(status_file, 'w') as f:
-                    f.write(ahora_utc.isoformat())
-        sys.exit(1)
-
-    def trigger_recovery():
-        if status_file.exists():
-            try:
-                with open(status_file, 'r') as f:
-                    last_alert_str = f.read().strip()
-                status_file.unlink()
-                
-                downtime_str = "tiempo desconocido"
-                if last_alert_str:
-                    last_alert_dt = datetime.fromisoformat(last_alert_str)
-                    diff = ahora_utc - last_alert_dt
-                    mins = int(diff.total_seconds() / 60)
-                    if mins < 60:
-                        downtime_str = f"{mins} minutos"
-                    else:
-                        horas = round(mins / 60, 1)
-                        downtime_str = f"{horas} horas"
-            except Exception as e:
-                print(f"[WARN] Error procesando recovery: {e}")
-                downtime_str = "tiempo desconocido"
-                if status_file.exists():
-                    status_file.unlink()
-
-            msg = f"✅ *Sistema Recuperado / Operativo* ✅\n"
-            msg += f"El flujo de datos de sensores ha vuelto a la normalidad.\n"
-            msg += f"⏱️ Tiempo detectado con fallos: *{downtime_str}*"
-            enviar_telegram(msg)
-            
-        sys.exit(0)
-
-    # Ping MongoDB y chequear ultima lectura
-    client = None
-    try:
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=10000)
-        client.admin.command('ping')
-    except Exception as e:
-        trigger_error(f"Fallo al conectar a MongoDB:\n`{e}`")
-        
-    db = client[MONGO_DB_NAME]
-    col_sensors = db[MONGO_COL_SENSORS]
-    
-    try:
-        last_doc = col_sensors.find_one(sort=[("timestamp", -1)])
-    except Exception as e:
-        trigger_error(f"Fallo leyendo MongoDB:\n`{e}`")
-        
-    if not last_doc:
-        trigger_recovery()
-        
-    latest_ts = last_doc.get("timestamp")
-    if not latest_ts:
-        trigger_recovery()
-        
-    # Asegurar que latest_ts es naive o utc para comparar
-    if latest_ts.tzinfo is not None:
-        latest_ts = latest_ts.astimezone(timezone.utc).replace(tzinfo=None)
-
-    diff = ahora_utc - latest_ts
-    
-    if diff > timedelta(minutes=10):
-        mins = int(diff.total_seconds() / 60)
-        texto_error = f"⚠️ Los datos llevan congelados *{mins} minutos*.\n"
-        texto_error += f"🌡️ Último dato: {latest_ts.strftime('%Y-%m-%d %H:%M:%S')} UTC\n"
-        texto_error += f"Verificar el Gateway/Sensores ROS."
-        trigger_error(texto_error)
-        
-    # Si todo esta normal (Mongo responde y lecturas son recientes)
-    trigger_recovery()
+    if hay_datos: enviar_telegram(mensaje)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Smart Reporter for IoT Gateway")
-    parser.add_argument("--daily", action="store_true", help="Run daily report")
-    parser.add_argument("--watchdog", action="store_true", help="Run connectivity and data freshness watchdog")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--daily", action="store_true")
     args = parser.parse_args()
-    
-    if args.watchdog:
-        run_watchdog()
-    elif args.daily:
-        generar_reporte()
-    else:
-        parser.print_help()
+    if args.daily: generar_reporte()
