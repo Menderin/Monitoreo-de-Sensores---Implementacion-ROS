@@ -85,7 +85,7 @@ def check_alerts():
     for dev in dispositivos:
         dev = adaptar_dispositivo(dev)
         dev_id = dev['_id']
-        alias = dev.get('nombre', dev.get('alias', dev_id))
+        alias = dev.get('alias') or dev.get('nombre') or dev_id
         umbrales = dev.get('umbrales', {})
         sensores_hab = dev.get('configuracion', {}).get('sensores_habilitados', [])
 

@@ -67,7 +67,7 @@ def generar_reporte():
     for dev in dispositivos:
         dev = adaptar_dispositivo(dev)
         dev_id = dev['_id']
-        alias = dev.get('nombre', dev.get('alias', dev_id))
+        alias = dev.get('alias') or dev.get('nombre') or dev_id
         
         query = {"dispositivo_id": dev_id, "timestamp": {"$gte": inicio_local.astimezone(timezone.utc).replace(tzinfo=None), "$lte": fin_local.astimezone(timezone.utc).replace(tzinfo=None)}}
         lecturas = list(col_sensors.find(query))
