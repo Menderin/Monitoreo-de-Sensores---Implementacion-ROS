@@ -27,7 +27,7 @@ elif command -v vcgencmd &>/dev/null; then
     CPU_TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -oP '[\d.]+' | head -1)
     CPU_TEMP="${CPU_TEMP}°C"
 fi
-TEMP_VAL=$(echo "$CPU_TEMP" | grep -oP '[\d.]+' || echo 0)
+TEMP_VAL=$(echo "$CPU_TEMP" | tr "," "." | grep -oP '[\d.]+' || echo 0)
 if awk "BEGIN {exit !($TEMP_VAL > 75)}"; then
     echo -e "  CPU Temp  : ${R}${CPU_TEMP} ⚠ CALIENTE${NC}"
 elif awk "BEGIN {exit !($TEMP_VAL > 60)}"; then
