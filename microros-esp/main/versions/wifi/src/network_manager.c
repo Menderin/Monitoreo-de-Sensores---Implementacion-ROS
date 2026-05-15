@@ -114,6 +114,14 @@ static bool wifi_reconnect_once(void)
         {
             ESP_LOGI(TAG, "Reconexión exitosa. IP: " IPSTR,
                      IP2STR(&ip_info.ip));
+
+            // Asegurar que el WiFi queda sin powersave tras reconectar.
+            // El ahorro de energía puede reintroducir latencia variable en UDP.
+            esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
+            if (ps_err != ESP_OK) {
+                ESP_LOGW(TAG, "esp_wifi_set_ps(WIFI_PS_NONE) falló: %s",
+                         esp_err_to_name(ps_err));
+            }
             return true;
         }
     }

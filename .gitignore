@@ -30,6 +30,7 @@
 config.ini
 secrets.yaml
 .claves
+.calibraciones
 
 # ============================================
 # 🐍 PYTHON (Análisis de Datos / Backend)
