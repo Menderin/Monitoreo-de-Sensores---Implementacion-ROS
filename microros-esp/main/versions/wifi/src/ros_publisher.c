@@ -6,6 +6,7 @@
 #include "../include/ros_publisher.h"
 #include "../include/motor_controller.h"
 #include "../include/config.h"
+#include "../include/network_manager.h"
 #include "../wifi_config.h"
 
 #include <stdio.h>
@@ -57,7 +58,7 @@ static std_msgs__msg__Float32MultiArray sensor_data_msg;
 // Suscriptor para comandos de motor
 static rcl_subscription_t motor_cmd_subscriber;
 static std_msgs__msg__String motor_cmd_msg;
-static char motor_cmd_buffer[32];  // Buffer estático (32 bytes para SELECT_MOTOR_2)
+static char motor_cmd_buffer[128];  // Buffer estático (evita overflow con comandos largos)
 
 // Executor para manejar callbacks
 static rclc_executor_t executor;
@@ -117,26 +118,38 @@ static void motor_cmd_callback(const void *msgin)
         ESP_LOGW(TAG, "Comando de motor vacío recibido");
         return;
     }
-    
-    ESP_LOGI(TAG, "📩 Comando recibido: '%s'", msg->data.data);
+
+    // No asumir NUL-termination ni confiar en el tamaño del buffer interno.
+    // Copiar con límite para evitar lecturas fuera de rango en strcmp/ESP_LOG*.
+    char cmd[128];
+    size_t copy_len = msg->data.size;
+    if (copy_len >= sizeof(cmd)) {
+        copy_len = sizeof(cmd) - 1;
+        ESP_LOGW(TAG, "Comando recibido truncado (size=%u, cap=%u)",
+                 (unsigned)msg->data.size, (unsigned)msg->data.capacity);
+    }
+    memcpy(cmd, msg->data.data, copy_len);
+    cmd[copy_len] = '\0';
+
+    ESP_LOGI(TAG, "📩 Comando recibido: '%s' (len=%u)", cmd, (unsigned)msg->data.size);
     
     // Obtener velocidad actual configurada
     uint8_t speed = motor_get_speed();
     
     // Comparar comando y ejecutar acción
-    if (strcmp(msg->data.data, "LEFT") == 0) {
+    if (strcmp(cmd, "LEFT") == 0) {
         motor_move_left(speed);
     }
-    else if (strcmp(msg->data.data, "RIGHT") == 0) {
+    else if (strcmp(cmd, "RIGHT") == 0) {
         motor_move_right(speed);
     }
-    else if (strcmp(msg->data.data, "STOP") == 0) {
+    else if (strcmp(cmd, "STOP") == 0) {
         motor_stop();
     }
     // Comando de velocidad con formato SPEED_SET_XX (donde XX es porcentaje 0-100)
-    else if (strncmp(msg->data.data, "SPEED_SET_", 10) == 0) {
+    else if (strncmp(cmd, "SPEED_SET_", 10) == 0) {
         // Parsear porcentaje después de "SPEED_SET_"
-        int percent = atoi(msg->data.data + 10);
+        int percent = atoi(cmd + 10);
         
         // Validar rango
         if (percent < 0) percent = 0;
@@ -149,8 +162,8 @@ static void motor_cmd_callback(const void *msgin)
         ESP_LOGI(TAG, "🎚️  Velocidad configurada: %d%% (duty=%d/255)", percent, duty);
     }
     // Selección de motor activo: SELECT_MOTOR_1 o SELECT_MOTOR_2
-    else if (strncmp(msg->data.data, "SELECT_MOTOR_", 13) == 0) {
-        int num = atoi(msg->data.data + 13);
+    else if (strncmp(cmd, "SELECT_MOTOR_", 13) == 0) {
+        int num = atoi(cmd + 13);
         if (num == 1) {
             motor_select(MOTOR_1);
         } else if (num == 2) {
@@ -160,7 +173,7 @@ static void motor_cmd_callback(const void *msgin)
         }
     }
     else {
-        ESP_LOGW(TAG, "Comando desconocido: '%s'", msg->data.data);
+        ESP_LOGW(TAG, "Comando desconocido: '%s'", cmd);
     }
 }
 
@@ -487,6 +500,13 @@ bool ros_agent_check_and_reconnect(void)
     // Sin IP/puerto configurados no hay nada que hacer.
     if (!s_rmw_options_ready) {
         ESP_LOGW(TAG, "[Resilience] IP/puerto del Agente no configurados.");
+        return false;
+    }
+
+    // Evitar pings/reinit si el WiFi no tiene IP: reduce churn de heap y
+    // reintentos inútiles durante caídas de red.
+    if (!network_manager_is_connected()) {
+        ESP_LOGW(TAG, "[Resilience] WiFi sin IP; posponiendo ping/hot-reload.");
         return false;
     }
 
