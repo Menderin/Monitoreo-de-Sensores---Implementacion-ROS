@@ -1,0 +1,15 @@
+[Unit]
+Description=Forzar inicio de Hotspot USB TP-Link post-arranque
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Espera 15 segundos para que el driver USB del TP-Link cargue físicamente
+ExecStartPre=/bin/sleep 15
+# Levanta la red apuntando exactamente al UUID del TP-Link (Adapter dinámico)
+ExecStart=/usr/bin/nmcli connection up uuid e5fc02e1-bc89-4d4d-b3fe-0701eefcac6e
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
